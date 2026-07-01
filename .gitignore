@@ -1,0 +1,37 @@
+# Build directories
+build/
+cmake-build-*/
+
+# Qt Creator
+*.user
+*.user.*
+CMakeLists.txt.user
+
+# Compiled objects and libraries
+*.o
+*.a
+*.so
+*.dll
+*.dylib
+*.exe
+
+# Logs and temporary files
+*.log
+*.tmp
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Virtual environments
+.venv/
+venv/
+
+# Generated data
+data/generated/
+
+# OS/editor files
+.DS_Store
+.vscode/
+.idea/
+
