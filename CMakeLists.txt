@@ -52,3 +52,26 @@ target_compile_options(geosensor-radar-viewer
         -Wextra
         -Wpedantic
 )
+
+enable_testing()
+
+add_executable(geosensor_coordinate_tests
+    tests/coordinates/coordinate_transform_tests.cpp
+)
+
+target_link_libraries(geosensor_coordinate_tests
+    PRIVATE
+        geosensor_core
+)
+
+target_compile_options(geosensor_coordinate_tests
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+)
+
+add_test(
+    NAME geosensor_coordinate_tests
+    COMMAND geosensor_coordinate_tests
+)
