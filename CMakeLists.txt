@@ -14,6 +14,22 @@ set(CMAKE_AUTOMOC ON)
 
 find_package(Qt6 REQUIRED COMPONENTS Widgets)
 
+add_library(geosensor_core
+    src/coordinates/CoordinateTransform.cpp
+)
+
+target_include_directories(geosensor_core
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+target_compile_options(geosensor_core
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+)
+
 add_executable(geosensor-radar-viewer
     src/main.cpp
     src/ui/MainWindow.cpp
@@ -27,6 +43,7 @@ target_include_directories(geosensor-radar-viewer
 target_link_libraries(geosensor-radar-viewer
     PRIVATE
         Qt6::Widgets
+        geosensor_core
 )
 
 target_compile_options(geosensor-radar-viewer
