@@ -57,6 +57,7 @@ private:
     QString csvPathText_ {};
     QString udpStatusText_ {"Not started."};
     QString lastInvalidPayload_ {};
+    std::size_t totalValidUdpPackets_ {};
 };
 
 } // namespace geosensor::ui
