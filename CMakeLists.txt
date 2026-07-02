@@ -12,17 +12,24 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(CMAKE_AUTOMOC ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Widgets)
+find_package(Qt6 REQUIRED COMPONENTS Widgets Network)
 
 add_library(geosensor_core STATIC
+    include/geosensor/networking/UdpMeasurementReceiver.h
     src/coordinates/CoordinateTransform.cpp
     src/io/CsvMeasurementLoader.cpp
     src/io/UdpMeasurementParser.cpp
+    src/networking/UdpMeasurementReceiver.cpp
 )
 
 target_include_directories(geosensor_core
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+target_link_libraries(geosensor_core
+    PUBLIC
+        Qt6::Network
 )
 
 target_compile_options(geosensor_core
