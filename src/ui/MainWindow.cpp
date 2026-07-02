@@ -54,16 +54,16 @@ void MainWindow::setupUi()
 
         const geosensor::io::CsvMeasurementLoader loader;
         csvMeasurements_ = loader.load(csvPath);
-        targets_.reserve(csvMeasurements_.size());
+        csvTargets_.reserve(csvMeasurements_.size());
 
         for (const auto& measurement : csvMeasurements_) {
-            targets_.push_back(transform_.transform(measurement).enu);
+            csvTargets_.push_back(transform_.transform(measurement).enu);
         }
     } catch (const std::exception& error) {
         udpStatusText_ = QString("CSV load error: %1").arg(error.what());
         csvPathText_.clear();
         csvMeasurements_.clear();
-        targets_.clear();
+        csvTargets_.clear();
     }
 
     QObject::connect(
@@ -101,7 +101,8 @@ void MainWindow::setupUi()
 
 void MainWindow::refreshDisplay()
 {
-    radarView_->setTargets(targets_);
+    radarView_->setSampleTargets(csvTargets_);
+    radarView_->setLiveTargets(liveTargets_);
 
     QString measurementRows;
 
@@ -180,17 +181,21 @@ void MainWindow::refreshDisplay()
         "UDP status:\n"
         "  Receiver:     %3\n"
         "  Live packets: %4\n"
-        "  %5\n"
+        "  CSV targets:  %5\n"
+        "  Live targets: %6\n"
+        "  %7\n"
         "Raw CSV measurements:\n"
-        "%6\n"
-        "%7\n"
         "%8\n"
         "%9"
+        "%10"
+        "%11"
     )
         .arg(csvPathText_.isEmpty() ? "Unavailable" : csvPathText_)
         .arg(static_cast<int>(csvMeasurements_.size()))
         .arg(udpStatusText_)
         .arg(static_cast<int>(liveMeasurements_.size()))
+        .arg(static_cast<int>(csvTargets_.size()))
+        .arg(static_cast<int>(liveTargets_.size()))
         .arg(invalidPayloadText)
         .arg(measurementRows)
         .arg(firstTargetText)
@@ -205,7 +210,7 @@ void MainWindow::appendLiveMeasurement(
 )
 {
     liveMeasurements_.push_back(measurement);
-    targets_.push_back(transform_.transform(measurement).enu);
+    liveTargets_.push_back(transform_.transform(measurement).enu);
     refreshDisplay();
 }
 
