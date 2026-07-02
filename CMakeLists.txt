@@ -34,6 +34,7 @@ target_compile_options(geosensor_core
 add_executable(geosensor-radar-viewer
     src/main.cpp
     src/ui/MainWindow.cpp
+    src/ui/RadarView.cpp
 )
 
 target_include_directories(geosensor-radar-viewer
