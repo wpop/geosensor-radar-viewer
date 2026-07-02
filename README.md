@@ -10,13 +10,16 @@ GeoSensor Radar Viewer is a C++20 and Qt6 desktop application for visualizing ge
 
 - Qt6 Widgets desktop interface
 - CSV loading for radar-style sensor measurements
+- Live UDP measurement receiver on `127.0.0.1:5005`
+- Python UDP simulator with static and moving target modes
 - Range / azimuth / elevation to local ENU coordinate transformation
 - Approximate ENU to WGS84 latitude / longitude conversion
 - Radar-style 2D visualization with:
   - sensor center
   - range rings
   - range labels
-  - detected targets
+  - separate CSV/sample and live UDP target styles
+  - live UDP target buffer limited to the latest 100 positions
   - legend
 - Unit tests for coordinate transformations
 - Unit tests for CSV measurement loading
@@ -51,6 +54,28 @@ cmake --build build
 ```bash
 ./build/geosensor-radar-viewer
 ```
+
+## Live UDP Demo
+
+Run the radar viewer in Terminal 1:
+
+```bash
+./build/geosensor-radar-viewer
+```
+
+Run the static UDP simulator in Terminal 2:
+
+```bash
+./scripts/simulator/udp_sensor_simulator.py --mode static --interval 0.5
+```
+
+Run the moving UDP simulator in Terminal 2:
+
+```bash
+./scripts/simulator/udp_sensor_simulator.py --mode moving --interval 0.2 --azimuth-step 5
+```
+
+In the radar view, CSV/sample targets are displayed separately from live UDP targets. Live targets are limited to the latest 100 positions, and moving mode changes azimuth gradually so the red live target moves around the radar.
 
 ## UDP Sensor Simulator
 
