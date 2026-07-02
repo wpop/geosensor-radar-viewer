@@ -32,11 +32,19 @@ RadarView::RadarView(QWidget* parent)
     setupScene();
 }
 
-void RadarView::setTargets(
+void RadarView::setSampleTargets(
     const std::vector<geosensor::data::EnuPosition>& targets
 )
 {
-    targets_ = targets;
+    sampleTargets_ = targets;
+    setupScene();
+}
+
+void RadarView::setLiveTargets(
+    const std::vector<geosensor::data::EnuPosition>& targets
+)
+{
+    liveTargets_ = targets;
     setupScene();
 }
 
@@ -94,14 +102,16 @@ void RadarView::setupScene()
 
     scene_.addEllipse(-1.0, -1.0, 2.0, 2.0, sensorPen, sensorBrush);
 
-    drawTargets();
+    drawSampleTargets();
+    drawLiveTargets();
 
     const qreal legendLeft = -sceneRadius - kScenePadding + 1.2;
     const qreal legendTop = -sceneRadius - kScenePadding + 1.2;
     const QStringList legendLines {
         "Legend:",
         "Sensor: yellow",
-        "Target: red",
+        "CSV/sample: gray",
+        "Live UDP: red",
         "Rings: range"
     };
 
@@ -128,17 +138,31 @@ void RadarView::fitSceneInView()
     fitInView(scene_.sceneRect(), Qt::KeepAspectRatio);
 }
 
-void RadarView::drawTargets()
+void RadarView::drawSampleTargets()
 {
-    const QBrush targetBrush(QColor(210, 62, 43));
-    QPen targetPen(QColor(102, 24, 18), 1.2);
-    targetPen.setCosmetic(true);
+    const QBrush sampleBrush(QColor(120, 132, 138));
+    QPen samplePen(QColor(72, 82, 88), 1.0);
+    samplePen.setCosmetic(true);
 
-    for (const auto& target : targets_) {
+    for (const auto& target : sampleTargets_) {
         const qreal x = target.eastM / kMetersPerSceneUnit;
         const qreal y = -target.northM / kMetersPerSceneUnit;
 
-        scene_.addEllipse(x - 0.85, y - 0.85, 1.7, 1.7, targetPen, targetBrush);
+        scene_.addEllipse(x - 0.55, y - 0.55, 1.1, 1.1, samplePen, sampleBrush);
+    }
+}
+
+void RadarView::drawLiveTargets()
+{
+    const QBrush liveBrush(QColor(210, 62, 43));
+    QPen livePen(QColor(102, 24, 18), 1.2);
+    livePen.setCosmetic(true);
+
+    for (const auto& target : liveTargets_) {
+        const qreal x = target.eastM / kMetersPerSceneUnit;
+        const qreal y = -target.northM / kMetersPerSceneUnit;
+
+        scene_.addEllipse(x - 0.85, y - 0.85, 1.7, 1.7, livePen, liveBrush);
     }
 }
 

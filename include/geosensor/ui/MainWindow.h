@@ -37,7 +37,8 @@ private:
     geosensor::networking::UdpMeasurementReceiver* udpReceiver_ {};
     std::vector<geosensor::data::SensorMeasurement> csvMeasurements_ {};
     std::vector<geosensor::data::SensorMeasurement> liveMeasurements_ {};
-    std::vector<geosensor::data::EnuPosition> targets_ {};
+    std::vector<geosensor::data::EnuPosition> csvTargets_ {};
+    std::vector<geosensor::data::EnuPosition> liveTargets_ {};
     geosensor::data::SensorOrigin sensorOrigin_ {
         .latitudeDeg = 49.2488,
         .longitudeDeg = -122.9805,

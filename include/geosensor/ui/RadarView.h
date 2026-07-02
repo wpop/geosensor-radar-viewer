@@ -23,9 +23,18 @@ namespace geosensor::ui
 class RadarView : public QGraphicsView
 {
 public:
+    // Creates the radar view widget.
     explicit RadarView(QWidget* parent = nullptr);
 
-    void setTargets(const std::vector<geosensor::data::EnuPosition>& targets);
+    // Updates the CSV or sample target layer.
+    void setSampleTargets(
+        const std::vector<geosensor::data::EnuPosition>& targets
+    );
+
+    // Updates the live UDP target layer.
+    void setLiveTargets(
+        const std::vector<geosensor::data::EnuPosition>& targets
+    );
 
 protected:
     void resizeEvent(QResizeEvent* event) override;
@@ -33,10 +42,12 @@ protected:
 private:
     void setupScene();
     void fitSceneInView();
-    void drawTargets();
+    void drawSampleTargets();
+    void drawLiveTargets();
 
     QGraphicsScene scene_ {};
-    std::vector<geosensor::data::EnuPosition> targets_ {};
+    std::vector<geosensor::data::EnuPosition> sampleTargets_ {};
+    std::vector<geosensor::data::EnuPosition> liveTargets_ {};
 };
 
 } // namespace geosensor::ui
