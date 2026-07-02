@@ -9,6 +9,7 @@
 #include <QPen>
 #include <QResizeEvent>
 #include <QString>
+#include <QStringList>
 
 namespace geosensor::ui
 {
@@ -65,6 +66,8 @@ void RadarView::setupScene()
 
     QFont labelFont;
     labelFont.setPointSize(9);
+    QFont legendFont = labelFont;
+    legendFont.setPointSize(8);
 
     scene_.addLine(-sceneRadius, 0.0, sceneRadius, 0.0, gridPen);
     scene_.addLine(0.0, -sceneRadius, 0.0, sceneRadius, gridPen);
@@ -92,6 +95,23 @@ void RadarView::setupScene()
     scene_.addEllipse(-1.0, -1.0, 2.0, 2.0, sensorPen, sensorBrush);
 
     drawTargets();
+
+    const qreal legendLeft = -sceneRadius - kScenePadding + 1.2;
+    const qreal legendTop = -sceneRadius - kScenePadding + 1.2;
+    const QStringList legendLines {
+        "Legend:",
+        "Sensor: yellow",
+        "Target: red",
+        "Rings: range"
+    };
+
+    for (int i = 0; i < legendLines.size(); ++i) {
+        auto* legendLabel = scene_.addText(legendLines[i], legendFont);
+        legendLabel->setDefaultTextColor(QColor(56, 76, 84));
+        legendLabel->setFlag(QGraphicsItem::ItemIgnoresTransformations, true);
+        legendLabel->setZValue(1.0);
+        legendLabel->setPos(legendLeft, legendTop + static_cast<qreal>(i) * 1.2);
+    }
 
     fitSceneInView();
 }
