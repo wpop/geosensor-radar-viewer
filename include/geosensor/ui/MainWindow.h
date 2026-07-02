@@ -8,6 +8,8 @@
 
 #include <vector>
 
+class QPushButton;
+
 namespace geosensor::networking
 {
 
@@ -31,9 +33,16 @@ private:
     void setupUi();
     void refreshDisplay();
     void appendLiveMeasurement(const geosensor::data::SensorMeasurement& measurement);
+    void startUdpReceiver();
+    void stopUdpReceiver();
+    void clearLiveTargets();
+    void updateUdpControlStates();
 
     QLabel* titleLabel_ {};
     RadarView* radarView_ {};
+    QPushButton* startUdpButton_ {};
+    QPushButton* stopUdpButton_ {};
+    QPushButton* clearLiveTargetsButton_ {};
     geosensor::networking::UdpMeasurementReceiver* udpReceiver_ {};
     std::vector<geosensor::data::SensorMeasurement> csvMeasurements_ {};
     std::vector<geosensor::data::SensorMeasurement> liveMeasurements_ {};
