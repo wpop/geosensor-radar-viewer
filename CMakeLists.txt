@@ -14,8 +14,9 @@ set(CMAKE_AUTOMOC ON)
 
 find_package(Qt6 REQUIRED COMPONENTS Widgets)
 
-add_library(geosensor_core
+add_library(geosensor_core STATIC
     src/coordinates/CoordinateTransform.cpp
+    src/io/CsvMeasurementLoader.cpp
 )
 
 target_include_directories(geosensor_core
