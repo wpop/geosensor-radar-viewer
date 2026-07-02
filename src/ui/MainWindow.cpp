@@ -6,8 +6,10 @@
 #include "geosensor/ui/RadarView.h"
 
 #include <QHBoxLayout>
+#include <QVBoxLayout>
 #include <QFont>
 #include <QObject>
+#include <QPushButton>
 #include <QString>
 #include <QWidget>
 
@@ -38,8 +40,10 @@ void MainWindow::setupUi()
 
     auto* centralWidget = new QWidget(this);
     auto* layout = new QHBoxLayout(centralWidget);
+    auto* leftPanel = new QWidget(centralWidget);
+    auto* leftLayout = new QVBoxLayout(leftPanel);
 
-    titleLabel_ = new QLabel(centralWidget);
+    titleLabel_ = new QLabel(leftPanel);
     titleLabel_->setAlignment(Qt::AlignTop | Qt::AlignLeft);
     titleLabel_->setContentsMargins(24, 24, 24, 24);
     titleLabel_->setTextInteractionFlags(Qt::TextSelectableByMouse);
@@ -49,6 +53,16 @@ void MainWindow::setupUi()
     font.setStyleHint(QFont::Monospace);
     font.setPointSize(10);
     titleLabel_->setFont(font);
+
+    startUdpButton_ = new QPushButton("Start UDP", leftPanel);
+    stopUdpButton_ = new QPushButton("Stop UDP", leftPanel);
+    clearLiveTargetsButton_ = new QPushButton("Clear Live Targets", leftPanel);
+
+    leftLayout->addWidget(titleLabel_, 1);
+    leftLayout->addWidget(startUdpButton_);
+    leftLayout->addWidget(stopUdpButton_);
+    leftLayout->addWidget(clearLiveTargetsButton_);
+    leftLayout->setContentsMargins(0, 0, 0, 0);
 
     radarView_ = new RadarView(centralWidget);
     udpReceiver_ = new geosensor::networking::UdpMeasurementReceiver(this);
@@ -92,15 +106,32 @@ void MainWindow::setupUi()
         }
     );
 
-    if (udpReceiver_->start()) {
-        udpStatusText_ = "Listening on 127.0.0.1:5005";
-    } else {
-        udpStatusText_ = "Failed to listen on 127.0.0.1:5005";
-    }
+    QObject::connect(
+        startUdpButton_,
+        &QPushButton::clicked,
+        this,
+        [this]() { startUdpReceiver(); }
+    );
+
+    QObject::connect(
+        stopUdpButton_,
+        &QPushButton::clicked,
+        this,
+        [this]() { stopUdpReceiver(); }
+    );
+
+    QObject::connect(
+        clearLiveTargetsButton_,
+        &QPushButton::clicked,
+        this,
+        [this]() { clearLiveTargets(); }
+    );
+
+    startUdpReceiver();
 
     refreshDisplay();
 
-    layout->addWidget(titleLabel_, 1);
+    layout->addWidget(leftPanel, 1);
     layout->addWidget(radarView_, 1);
 
     setCentralWidget(centralWidget);
@@ -110,6 +141,7 @@ void MainWindow::refreshDisplay()
 {
     radarView_->setSampleTargets(csvTargets_);
     radarView_->setLiveTargets(liveTargets_);
+    updateUdpControlStates();
 
     QString measurementRows;
 
@@ -227,6 +259,40 @@ void MainWindow::appendLiveMeasurement(
     }
 
     refreshDisplay();
+}
+
+void MainWindow::startUdpReceiver()
+{
+    if (udpReceiver_->start()) {
+        udpStatusText_ = "Listening on 127.0.0.1:5005";
+    } else {
+        udpStatusText_ = "Failed to listen on 127.0.0.1:5005";
+    }
+
+    refreshDisplay();
+}
+
+void MainWindow::stopUdpReceiver()
+{
+    udpReceiver_->stop();
+    udpStatusText_ = "Stopped";
+    refreshDisplay();
+}
+
+void MainWindow::clearLiveTargets()
+{
+    liveMeasurements_.clear();
+    liveTargets_.clear();
+    refreshDisplay();
+}
+
+void MainWindow::updateUdpControlStates()
+{
+    const bool isListening = udpReceiver_->isListening();
+
+    startUdpButton_->setEnabled(!isListening);
+    stopUdpButton_->setEnabled(isListening);
+    clearLiveTargetsButton_->setEnabled(!liveTargets_.empty());
 }
 
 } // namespace geosensor::ui
