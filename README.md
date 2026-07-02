@@ -79,6 +79,20 @@ Run the moving UDP simulator in Terminal 2:
 
 In the radar view, CSV/sample targets remain visible and are styled separately from live UDP targets. `Start UDP` starts or resumes receiving live packets, `Stop UDP` pauses live receiving, and `Clear Live Targets` removes only the live UDP targets while keeping the CSV/sample targets on screen. Live targets are limited to the latest 100 positions, and the `Total valid UDP packets` status line continues increasing even after the live target buffer reaches 100. In moving mode, azimuth changes gradually so the red live target moves around the radar.
 
+## SQLite Storage
+
+Valid live UDP measurements are stored automatically in `data/geosensor_live_measurements.sqlite` when the application runs. The UI also shows storage status and the current stored measurement count.
+
+The database file is a runtime artifact and should not be committed. The repository ignores `data/*.sqlite`.
+
+`Clear Live Targets` clears only the live display buffer. It does not delete rows already stored in SQLite.
+
+To inspect the current stored row count:
+
+```bash
+sqlite3 data/geosensor_live_measurements.sqlite "SELECT COUNT(*) FROM measurements;"
+```
+
 ## UDP Sensor Simulator
 
 The repository includes a small Python UDP simulator that sends one radar-style measurement per packet as CSV text:
