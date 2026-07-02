@@ -52,6 +52,26 @@ cmake --build build
 ./build/geosensor-radar-viewer
 ```
 
+## UDP Sensor Simulator
+
+The repository includes a small Python UDP simulator that sends one radar-style measurement per packet as CSV text:
+
+```text
+1200.0,45.0,3.0,0.82
+```
+
+Run it with the default destination `127.0.0.1:5005` and a `1.0` second interval:
+
+```bash
+./scripts/simulator/udp_sensor_simulator.py
+```
+
+Optional arguments:
+
+- `--host` to change the destination host
+- `--port` to change the destination UDP port
+- `--interval` to change the delay between packets in seconds
+
 ## Test Instructions
 
 The project uses simple C++ assert-based test executables registered with CTest.
@@ -80,6 +100,7 @@ tests/
 
 data/samples/
 docs/images/
+scripts/simulator/
 ```
 
 ## Roadmap
