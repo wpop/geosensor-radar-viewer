@@ -2,9 +2,13 @@
 
 #include <QBrush>
 #include <QColor>
+#include <QFont>
+#include <QGraphicsItem>
+#include <QGraphicsTextItem>
 #include <QPainter>
 #include <QPen>
 #include <QResizeEvent>
+#include <QString>
 
 namespace geosensor::ui
 {
@@ -14,6 +18,7 @@ namespace
 
 constexpr qreal kMetersPerSceneUnit = 100.0;
 constexpr qreal kMaxDisplayRangeM = 1600.0;
+constexpr qreal kScenePadding = 6.0;
 
 } // namespace
 
@@ -42,10 +47,10 @@ void RadarView::setupScene()
     scene_.clear();
     scene_.setBackgroundBrush(QColor(236, 243, 244));
     scene_.setSceneRect(
-        -sceneRadius - 1.5,
-        -sceneRadius - 1.5,
-        (sceneRadius + 1.5) * 2.0,
-        (sceneRadius + 1.5) * 2.0
+        -sceneRadius - kScenePadding,
+        -sceneRadius - kScenePadding,
+        (sceneRadius + kScenePadding) * 2.0,
+        (sceneRadius + kScenePadding) * 2.0
     );
 
     QPen gridPen(QColor(28, 72, 84), 1.8);
@@ -57,6 +62,9 @@ void RadarView::setupScene()
     const QBrush sensorBrush(QColor(255, 188, 48));
     QPen sensorPen(QColor(112, 76, 0), 1.8);
     sensorPen.setCosmetic(true);
+
+    QFont labelFont;
+    labelFont.setPointSize(9);
 
     scene_.addLine(-sceneRadius, 0.0, sceneRadius, 0.0, gridPen);
     scene_.addLine(0.0, -sceneRadius, 0.0, sceneRadius, gridPen);
@@ -70,6 +78,15 @@ void RadarView::setupScene()
             ringRadius * 2.0,
             ringPen
         );
+
+        auto* label = scene_.addText(
+            QString("%1 m").arg(static_cast<int>(rangeM)),
+            labelFont
+        );
+        label->setDefaultTextColor(QColor(56, 76, 84));
+        label->setFlag(QGraphicsItem::ItemIgnoresTransformations, true);
+        label->setZValue(1.0);
+        label->setPos(ringRadius + 0.2, -0.8);
     }
 
     scene_.addEllipse(-1.0, -1.0, 2.0, 2.0, sensorPen, sensorBrush);
