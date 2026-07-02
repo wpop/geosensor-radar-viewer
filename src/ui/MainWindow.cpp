@@ -2,9 +2,12 @@
 
 #include "geosensor/coordinates/CoordinateTransform.h"
 #include "geosensor/io/CsvMeasurementLoader.h"
+#include "geosensor/ui/RadarView.h"
 
+#include <QHBoxLayout>
 #include <QFont>
 #include <QString>
+#include <QWidget>
 
 #include <exception>
 #include <filesystem>
@@ -23,7 +26,10 @@ void MainWindow::setupUi()
     setWindowTitle("GeoSensor Radar Viewer");
     resize(1000, 700);
 
-    titleLabel_ = new QLabel(this);
+    auto* centralWidget = new QWidget(this);
+    auto* layout = new QHBoxLayout(centralWidget);
+
+    titleLabel_ = new QLabel(centralWidget);
     titleLabel_->setAlignment(Qt::AlignTop | Qt::AlignLeft);
     titleLabel_->setContentsMargins(24, 24, 24, 24);
     titleLabel_->setTextInteractionFlags(Qt::TextSelectableByMouse);
@@ -33,6 +39,8 @@ void MainWindow::setupUi()
     font.setStyleHint(QFont::Monospace);
     font.setPointSize(10);
     titleLabel_->setFont(font);
+
+    radarView_ = new RadarView(centralWidget);
 
     const geosensor::data::SensorOrigin sensorOrigin {
         .latitudeDeg = 49.2488,
@@ -116,7 +124,10 @@ void MainWindow::setupUi()
         );
     }
 
-    setCentralWidget(titleLabel_);
+    layout->addWidget(titleLabel_, 1);
+    layout->addWidget(radarView_, 1);
+
+    setCentralWidget(centralWidget);
 }
 
 } // namespace geosensor::ui
