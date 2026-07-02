@@ -66,11 +66,25 @@ Run it with the default destination `127.0.0.1:5005` and a `1.0` second interval
 ./scripts/simulator/udp_sensor_simulator.py
 ```
 
+Run the existing repeating static sample mode explicitly:
+
+```bash
+./scripts/simulator/udp_sensor_simulator.py --mode static
+```
+
+Run a moving-target mode with gradually changing azimuth:
+
+```bash
+./scripts/simulator/udp_sensor_simulator.py --mode moving --azimuth-step 5.0
+```
+
 Optional arguments:
 
 - `--host` to change the destination host
 - `--port` to change the destination UDP port
 - `--interval` to change the delay between packets in seconds
+- `--mode` to choose `static` or `moving`
+- `--azimuth-step` to control azimuth change per packet in moving mode
 
 ## Test Instructions
 
