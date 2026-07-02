@@ -13,6 +13,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_AUTOMOC ON)
 
 find_package(Qt6 REQUIRED COMPONENTS Widgets Network)
+find_package(SQLite3 REQUIRED)
 
 add_library(geosensor_core STATIC
     include/geosensor/networking/UdpMeasurementReceiver.h
@@ -20,6 +21,7 @@ add_library(geosensor_core STATIC
     src/io/CsvMeasurementLoader.cpp
     src/io/UdpMeasurementParser.cpp
     src/networking/UdpMeasurementReceiver.cpp
+    src/storage/MeasurementDatabase.cpp
 )
 
 target_include_directories(geosensor_core
@@ -30,6 +32,7 @@ target_include_directories(geosensor_core
 target_link_libraries(geosensor_core
     PUBLIC
         Qt6::Network
+        SQLite::SQLite3
 )
 
 target_compile_options(geosensor_core
@@ -128,4 +131,25 @@ target_compile_options(geosensor_udp_parser_tests
 add_test(
     NAME geosensor_udp_parser_tests
     COMMAND geosensor_udp_parser_tests
+)
+
+add_executable(geosensor_storage_tests
+    tests/storage/measurement_database_tests.cpp
+)
+
+target_link_libraries(geosensor_storage_tests
+    PRIVATE
+        geosensor_core
+)
+
+target_compile_options(geosensor_storage_tests
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+)
+
+add_test(
+    NAME geosensor_storage_tests
+    COMMAND geosensor_storage_tests
 )
