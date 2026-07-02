@@ -8,6 +8,7 @@ import argparse
 import itertools
 import socket
 import time
+from typing import Iterator
 
 
 def parse_args() -> argparse.Namespace:
@@ -32,10 +33,22 @@ def parse_args() -> argparse.Namespace:
         default=1.0,
         help="Seconds between packets. Default: 1.0",
     )
+    parser.add_argument(
+        "--mode",
+        choices=("static", "moving"),
+        default="static",
+        help="Measurement mode. Default: static",
+    )
+    parser.add_argument(
+        "--azimuth-step",
+        type=float,
+        default=5.0,
+        help="Azimuth step per packet in moving mode. Default: 5.0",
+    )
     return parser.parse_args()
 
 
-def measurement_stream() -> itertools.cycle[tuple[float, float, float, float]]:
+def static_measurement_stream() -> itertools.cycle[tuple[float, float, float, float]]:
     """Yield a repeating set of example radar-like measurements."""
     measurements = (
         (1200.0, 45.0, 3.0, 0.82),
@@ -45,6 +58,20 @@ def measurement_stream() -> itertools.cycle[tuple[float, float, float, float]]:
         (820.0, 15.0, 1.0, 0.58),
     )
     return itertools.cycle(measurements)
+
+
+def moving_measurement_stream(
+    azimuth_step: float,
+) -> Iterator[tuple[float, float, float, float]]:
+    """Yield one moving target whose azimuth changes each packet."""
+    range_m = 900.0
+    azimuth_deg = 0.0
+    elevation_deg = 2.0
+    intensity = 0.85
+
+    while True:
+        yield (range_m, azimuth_deg, elevation_deg, intensity)
+        azimuth_deg = (azimuth_deg + azimuth_step) % 360.0
 
 
 def format_measurement(
@@ -65,15 +92,20 @@ def main() -> int:
 
     # UDP is connectionless, so we simply send one CSV measurement per packet.
     destination = (args.host, args.port)
+    if args.mode == "moving":
+        measurements = moving_measurement_stream(args.azimuth_step)
+    else:
+        measurements = static_measurement_stream()
 
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp_socket:
         print(
             "Sending UDP radar measurements to "
-            f"{args.host}:{args.port} every {args.interval:.2f} s"
+            f"{args.host}:{args.port} every {args.interval:.2f} s "
+            f"in {args.mode} mode"
         )
 
         try:
-            for measurement in measurement_stream():
+            for measurement in measurements:
                 payload = format_measurement(measurement)
                 udp_socket.sendto(payload.encode("utf-8"), destination)
                 print(payload)
