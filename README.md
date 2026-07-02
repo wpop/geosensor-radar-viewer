@@ -12,6 +12,7 @@ GeoSensor Radar Viewer is a C++20 and Qt6 desktop application for visualizing ge
 - CSV loading for radar-style sensor measurements
 - Live UDP measurement receiver on `127.0.0.1:5005`
 - Python UDP simulator with static and moving target modes
+- Live UDP controls for start, stop, and clear
 - Range / azimuth / elevation to local ENU coordinate transformation
 - Approximate ENU to WGS84 latitude / longitude conversion
 - Radar-style 2D visualization with:
@@ -20,6 +21,7 @@ GeoSensor Radar Viewer is a C++20 and Qt6 desktop application for visualizing ge
   - range labels
   - separate CSV/sample and live UDP target styles
   - live UDP target buffer limited to the latest 100 positions
+  - total valid UDP packet counter
   - legend
 - Unit tests for coordinate transformations
 - Unit tests for CSV measurement loading
@@ -75,7 +77,7 @@ Run the moving UDP simulator in Terminal 2:
 ./scripts/simulator/udp_sensor_simulator.py --mode moving --interval 0.2 --azimuth-step 5
 ```
 
-In the radar view, CSV/sample targets are displayed separately from live UDP targets. Live targets are limited to the latest 100 positions, and moving mode changes azimuth gradually so the red live target moves around the radar.
+In the radar view, CSV/sample targets remain visible and are styled separately from live UDP targets. `Start UDP` starts or resumes receiving live packets, `Stop UDP` pauses live receiving, and `Clear Live Targets` removes only the live UDP targets while keeping the CSV/sample targets on screen. Live targets are limited to the latest 100 positions, and the `Total valid UDP packets` status line continues increasing even after the live target buffer reaches 100. In moving mode, azimuth changes gradually so the red live target moves around the radar.
 
 ## UDP Sensor Simulator
 
