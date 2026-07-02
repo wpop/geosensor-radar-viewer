@@ -219,11 +219,11 @@ void MainWindow::refreshDisplay()
         "  Measurements: %2\n\n"
         "UDP status:\n"
         "  Receiver:     %3\n"
-        "  CSV targets:  %4\n"
-        "  Live targets: %5 / %6\n"
-        "  %7\n"
+        "  Total valid UDP packets: %4\n"
+        "  CSV targets:  %5\n"
+        "  Live targets: %6 / %7\n"
+        "  %8"
         "Raw CSV measurements:\n"
-        "%8"
         "%9"
         "%10"
         "%11"
@@ -231,6 +231,7 @@ void MainWindow::refreshDisplay()
         .arg(csvPathText_.isEmpty() ? "Unavailable" : csvPathText_)
         .arg(static_cast<int>(csvMeasurements_.size()))
         .arg(udpStatusText_)
+        .arg(static_cast<qulonglong>(totalValidUdpPackets_))
         .arg(static_cast<int>(csvTargets_.size()))
         .arg(static_cast<int>(liveTargets_.size()))
         .arg(static_cast<int>(kMaxLiveTargetCount))
@@ -247,6 +248,7 @@ void MainWindow::appendLiveMeasurement(
     const geosensor::data::SensorMeasurement& measurement
 )
 {
+    ++totalValidUdpPackets_;
     liveMeasurements_.push_back(measurement);
     liveTargets_.push_back(transform_.transform(measurement).enu);
 
