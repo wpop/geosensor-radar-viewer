@@ -11,6 +11,7 @@
 
 #include <exception>
 #include <filesystem>
+#include <vector>
 
 namespace geosensor::ui
 {
@@ -55,11 +56,19 @@ void MainWindow::setupUi()
 
         const geosensor::io::CsvMeasurementLoader loader;
         const auto measurements = loader.load(csvPath);
+        std::vector<geosensor::data::EnuPosition> targets;
+        targets.reserve(measurements.size());
 
         QString measurementRows;
 
+        const geosensor::coordinates::CoordinateTransform transform(
+            sensorOrigin
+        );
+
         for (std::size_t i = 0; i < measurements.size(); ++i) {
             const auto& measurement = measurements[i];
+            const auto target = transform.transform(measurement);
+            targets.push_back(target.enu);
 
             measurementRows += QString(
                 "%1) range=%2 m, azimuth=%3 deg, elevation=%4 deg, intensity=%5\n"
@@ -71,13 +80,11 @@ void MainWindow::setupUi()
                 .arg(measurement.intensity, 0, 'f', 2);
         }
 
+        radarView_->setTargets(targets);
+
         QString firstTargetText;
 
         if (!measurements.empty()) {
-            const geosensor::coordinates::CoordinateTransform transform(
-                sensorOrigin
-            );
-
             const geosensor::data::TargetPosition firstTarget =
                 transform.transform(measurements.front());
 
@@ -109,7 +116,7 @@ void MainWindow::setupUi()
             "Raw CSV measurements:\n"
             "%3\n"
             "%4\n"
-            "Next step: display these targets on a 2D radar scene."
+            "Targets are displayed on the radar scene."
         )
             .arg(QString::fromStdString(csvPath.string()))
             .arg(static_cast<int>(measurements.size()))
