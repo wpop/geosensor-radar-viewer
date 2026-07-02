@@ -18,6 +18,13 @@
 namespace geosensor::ui
 {
 
+namespace
+{
+
+constexpr std::size_t kMaxLiveTargetCount = 100;
+
+} // namespace
+
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent)
 {
@@ -180,12 +187,11 @@ void MainWindow::refreshDisplay()
         "  Measurements: %2\n\n"
         "UDP status:\n"
         "  Receiver:     %3\n"
-        "  Live packets: %4\n"
-        "  CSV targets:  %5\n"
-        "  Live targets: %6\n"
+        "  CSV targets:  %4\n"
+        "  Live targets: %5 / %6\n"
         "  %7\n"
         "Raw CSV measurements:\n"
-        "%8\n"
+        "%8"
         "%9"
         "%10"
         "%11"
@@ -193,9 +199,9 @@ void MainWindow::refreshDisplay()
         .arg(csvPathText_.isEmpty() ? "Unavailable" : csvPathText_)
         .arg(static_cast<int>(csvMeasurements_.size()))
         .arg(udpStatusText_)
-        .arg(static_cast<int>(liveMeasurements_.size()))
         .arg(static_cast<int>(csvTargets_.size()))
         .arg(static_cast<int>(liveTargets_.size()))
+        .arg(static_cast<int>(kMaxLiveTargetCount))
         .arg(invalidPayloadText)
         .arg(measurementRows)
         .arg(firstTargetText)
@@ -211,6 +217,15 @@ void MainWindow::appendLiveMeasurement(
 {
     liveMeasurements_.push_back(measurement);
     liveTargets_.push_back(transform_.transform(measurement).enu);
+
+    if (liveMeasurements_.size() > kMaxLiveTargetCount) {
+        liveMeasurements_.erase(liveMeasurements_.begin());
+    }
+
+    if (liveTargets_.size() > kMaxLiveTargetCount) {
+        liveTargets_.erase(liveTargets_.begin());
+    }
+
     refreshDisplay();
 }
 
