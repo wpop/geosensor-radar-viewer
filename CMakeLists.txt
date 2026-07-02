@@ -17,6 +17,7 @@ find_package(Qt6 REQUIRED COMPONENTS Widgets)
 add_library(geosensor_core STATIC
     src/coordinates/CoordinateTransform.cpp
     src/io/CsvMeasurementLoader.cpp
+    src/io/UdpMeasurementParser.cpp
 )
 
 target_include_directories(geosensor_core
@@ -99,4 +100,25 @@ add_test(
     COMMAND
         geosensor_csv_tests
         ${CMAKE_CURRENT_SOURCE_DIR}/data/samples/measurements.csv
+)
+
+add_executable(geosensor_udp_parser_tests
+    tests/io/udp_measurement_parser_tests.cpp
+)
+
+target_link_libraries(geosensor_udp_parser_tests
+    PRIVATE
+        geosensor_core
+)
+
+target_compile_options(geosensor_udp_parser_tests
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+)
+
+add_test(
+    NAME geosensor_udp_parser_tests
+    COMMAND geosensor_udp_parser_tests
 )
