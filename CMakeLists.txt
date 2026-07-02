@@ -76,3 +76,26 @@ add_test(
     NAME geosensor_coordinate_tests
     COMMAND geosensor_coordinate_tests
 )
+
+add_executable(geosensor_csv_tests
+    tests/io/csv_measurement_loader_tests.cpp
+)
+
+target_link_libraries(geosensor_csv_tests
+    PRIVATE
+        geosensor_core
+)
+
+target_compile_options(geosensor_csv_tests
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+)
+
+add_test(
+    NAME geosensor_csv_tests
+    COMMAND
+        geosensor_csv_tests
+        ${CMAKE_CURRENT_SOURCE_DIR}/data/samples/measurements.csv
+)
