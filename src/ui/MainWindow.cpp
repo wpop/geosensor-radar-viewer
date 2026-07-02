@@ -3,6 +3,7 @@
 #include "geosensor/coordinates/CoordinateTransform.h"
 #include "geosensor/io/CsvMeasurementLoader.h"
 #include "geosensor/networking/UdpMeasurementReceiver.h"
+#include "geosensor/storage/MeasurementDatabase.h"
 #include "geosensor/ui/RadarView.h"
 
 #include <QHBoxLayout>
@@ -66,6 +67,23 @@ void MainWindow::setupUi()
 
     radarView_ = new RadarView(centralWidget);
     udpReceiver_ = new geosensor::networking::UdpMeasurementReceiver(this);
+
+    try {
+        const std::filesystem::path databasePath {
+            "data/geosensor_live_measurements.sqlite"
+        };
+        std::filesystem::create_directories(databasePath.parent_path());
+
+        if (measurementDatabase_.open(databasePath)) {
+            databaseStatusText_ = "Enabled";
+        } else {
+            databaseStatusText_ = QString(
+                "Open failed: %1"
+            ).arg(QString::fromStdString(databasePath.string()));
+        }
+    } catch (const std::exception& error) {
+        databaseStatusText_ = QString("Storage error: %1").arg(error.what());
+    }
 
     try {
         const std::filesystem::path csvPath {
@@ -211,6 +229,15 @@ void MainWindow::refreshDisplay()
         ).arg(lastInvalidPayload_);
     }
 
+    QString storedMeasurementText = "Stored measurements: unavailable\n";
+    const auto storedMeasurementCount = measurementDatabase_.measurementCount();
+
+    if (storedMeasurementCount.has_value()) {
+        storedMeasurementText = QString(
+            "Stored measurements: %1\n"
+        ).arg(static_cast<qlonglong>(*storedMeasurementCount));
+    }
+
     const QString text = QString(
         "GeoSensor Radar Viewer\n"
         "======================\n\n"
@@ -223,10 +250,13 @@ void MainWindow::refreshDisplay()
         "  CSV targets:  %5\n"
         "  Live targets: %6 / %7\n"
         "  %8"
+        "Database status:\n"
+        "  Storage:      %9\n"
+        "  %10"
         "Raw CSV measurements:\n"
-        "%9"
-        "%10"
         "%11"
+        "%12"
+        "%13"
     )
         .arg(csvPathText_.isEmpty() ? "Unavailable" : csvPathText_)
         .arg(static_cast<int>(csvMeasurements_.size()))
@@ -236,6 +266,8 @@ void MainWindow::refreshDisplay()
         .arg(static_cast<int>(liveTargets_.size()))
         .arg(static_cast<int>(kMaxLiveTargetCount))
         .arg(invalidPayloadText)
+        .arg(databaseStatusText_)
+        .arg(storedMeasurementText)
         .arg(measurementRows)
         .arg(firstTargetText)
         .arg(latestLiveText)
@@ -251,6 +283,12 @@ void MainWindow::appendLiveMeasurement(
     ++totalValidUdpPackets_;
     liveMeasurements_.push_back(measurement);
     liveTargets_.push_back(transform_.transform(measurement).enu);
+
+    if (!measurementDatabase_.insertMeasurement(measurement)) {
+        databaseStatusText_ = "Insert failed";
+    } else if (databaseStatusText_ != "Enabled") {
+        databaseStatusText_ = "Enabled";
+    }
 
     if (liveMeasurements_.size() > kMaxLiveTargetCount) {
         liveMeasurements_.erase(liveMeasurements_.begin());

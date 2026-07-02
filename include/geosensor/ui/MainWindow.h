@@ -2,6 +2,7 @@
 
 #include "geosensor/coordinates/CoordinateTransform.h"
 #include "geosensor/data/SensorMeasurement.h"
+#include "geosensor/storage/MeasurementDatabase.h"
 
 #include <QLabel>
 #include <QMainWindow>
@@ -54,8 +55,10 @@ private:
         .altitudeM = 50.0
     };
     geosensor::coordinates::CoordinateTransform transform_ {sensorOrigin_};
+    geosensor::storage::MeasurementDatabase measurementDatabase_ {};
     QString csvPathText_ {};
     QString udpStatusText_ {"Not started."};
+    QString databaseStatusText_ {"Disabled"};
     QString lastInvalidPayload_ {};
     std::size_t totalValidUdpPackets_ {};
 };
