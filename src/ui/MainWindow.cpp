@@ -1,9 +1,13 @@
 #include "geosensor/ui/MainWindow.h"
 
 #include "geosensor/coordinates/CoordinateTransform.h"
+#include "geosensor/io/CsvMeasurementLoader.h"
 
 #include <QFont>
 #include <QString>
+
+#include <exception>
+#include <filesystem>
 
 namespace geosensor::ui
 {
@@ -17,16 +21,17 @@ MainWindow::MainWindow(QWidget* parent)
 void MainWindow::setupUi()
 {
     setWindowTitle("GeoSensor Radar Viewer");
-    resize(900, 600);
+    resize(1000, 700);
 
     titleLabel_ = new QLabel(this);
     titleLabel_->setAlignment(Qt::AlignTop | Qt::AlignLeft);
     titleLabel_->setContentsMargins(24, 24, 24, 24);
+    titleLabel_->setTextInteractionFlags(Qt::TextSelectableByMouse);
 
     QFont font;
     font.setFamily("Monospace");
     font.setStyleHint(QFont::Monospace);
-    font.setPointSize(11);
+    font.setPointSize(10);
     titleLabel_->setFont(font);
 
     const geosensor::data::SensorOrigin sensorOrigin {
@@ -35,58 +40,81 @@ void MainWindow::setupUi()
         .altitudeM = 50.0
     };
 
-    const geosensor::data::SensorMeasurement measurement {
-        .rangeM = 1200.0,
-        .azimuthDeg = 45.0,
-        .elevationDeg = 3.0,
-        .intensity = 0.82
-    };
+    try {
+        const std::filesystem::path csvPath {
+            "data/samples/measurements.csv"
+        };
 
-    const geosensor::coordinates::CoordinateTransform coordinateTransform(
-        sensorOrigin
-    );
+        const geosensor::io::CsvMeasurementLoader loader;
+        const auto measurements = loader.load(csvPath);
 
-    const geosensor::data::TargetPosition target =
-        coordinateTransform.transform(measurement);
+        QString measurementRows;
 
-    const QString text = QString(
-        "GeoSensor Radar Viewer\n"
-        "======================\n\n"
-        "Demo radar-like measurement\n\n"
-        "Sensor origin WGS84:\n"
-        "  Latitude:   %1 deg\n"
-        "  Longitude:  %2 deg\n"
-        "  Altitude:   %3 m\n\n"
-        "Raw measurement:\n"
-        "  Range:      %4 m\n"
-        "  Azimuth:    %5 deg\n"
-        "  Elevation:  %6 deg\n"
-        "  Intensity:  %7\n\n"
-        "Local ENU target position:\n"
-        "  East:       %8 m\n"
-        "  North:      %9 m\n"
-        "  Up:         %10 m\n\n"
-        "Approximate WGS84 target position:\n"
-        "  Latitude:   %11 deg\n"
-        "  Longitude:  %12 deg\n"
-        "  Altitude:   %13 m\n\n"
-        "Next step: load measurements from CSV."
-    )
-        .arg(sensorOrigin.latitudeDeg, 0, 'f', 6)
-        .arg(sensorOrigin.longitudeDeg, 0, 'f', 6)
-        .arg(sensorOrigin.altitudeM, 0, 'f', 2)
-        .arg(measurement.rangeM, 0, 'f', 2)
-        .arg(measurement.azimuthDeg, 0, 'f', 2)
-        .arg(measurement.elevationDeg, 0, 'f', 2)
-        .arg(measurement.intensity, 0, 'f', 2)
-        .arg(target.enu.eastM, 0, 'f', 2)
-        .arg(target.enu.northM, 0, 'f', 2)
-        .arg(target.enu.upM, 0, 'f', 2)
-        .arg(target.geographic.latitudeDeg, 0, 'f', 8)
-        .arg(target.geographic.longitudeDeg, 0, 'f', 8)
-        .arg(target.geographic.altitudeM, 0, 'f', 2);
+        for (std::size_t i = 0; i < measurements.size(); ++i) {
+            const auto& measurement = measurements[i];
 
-    titleLabel_->setText(text);
+            measurementRows += QString(
+                "%1) range=%2 m, azimuth=%3 deg, elevation=%4 deg, intensity=%5\n"
+            )
+                .arg(static_cast<int>(i + 1))
+                .arg(measurement.rangeM, 0, 'f', 1)
+                .arg(measurement.azimuthDeg, 0, 'f', 1)
+                .arg(measurement.elevationDeg, 0, 'f', 1)
+                .arg(measurement.intensity, 0, 'f', 2);
+        }
+
+        QString firstTargetText;
+
+        if (!measurements.empty()) {
+            const geosensor::coordinates::CoordinateTransform transform(
+                sensorOrigin
+            );
+
+            const geosensor::data::TargetPosition firstTarget =
+                transform.transform(measurements.front());
+
+            firstTargetText = QString(
+                "First transformed target:\n"
+                "  ENU East:     %1 m\n"
+                "  ENU North:    %2 m\n"
+                "  ENU Up:       %3 m\n"
+                "  Latitude:     %4 deg\n"
+                "  Longitude:    %5 deg\n"
+                "  Altitude:     %6 m\n"
+            )
+                .arg(firstTarget.enu.eastM, 0, 'f', 2)
+                .arg(firstTarget.enu.northM, 0, 'f', 2)
+                .arg(firstTarget.enu.upM, 0, 'f', 2)
+                .arg(firstTarget.geographic.latitudeDeg, 0, 'f', 8)
+                .arg(firstTarget.geographic.longitudeDeg, 0, 'f', 8)
+                .arg(firstTarget.geographic.altitudeM, 0, 'f', 2);
+        } else {
+            firstTargetText = "No measurements loaded.\n";
+        }
+
+        const QString text = QString(
+            "GeoSensor Radar Viewer\n"
+            "======================\n\n"
+            "Loaded CSV file:\n"
+            "  Path:         %1\n"
+            "  Measurements: %2\n\n"
+            "Raw CSV measurements:\n"
+            "%3\n"
+            "%4\n"
+            "Next step: display these targets on a 2D radar scene."
+        )
+            .arg(QString::fromStdString(csvPath.string()))
+            .arg(static_cast<int>(measurements.size()))
+            .arg(measurementRows)
+            .arg(firstTargetText);
+
+        titleLabel_->setText(text);
+    } catch (const std::exception& error) {
+        titleLabel_->setText(
+            QString("GeoSensor Radar Viewer\n\nError: %1")
+                .arg(error.what())
+        );
+    }
 
     setCentralWidget(titleLabel_);
 }
