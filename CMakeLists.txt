@@ -14,6 +14,7 @@ set(CMAKE_AUTOMOC ON)
 
 find_package(Qt6 REQUIRED COMPONENTS Widgets Network)
 find_package(SQLite3 REQUIRED)
+find_package(PROJ QUIET)
 
 add_library(geosensor_core STATIC
     include/geosensor/networking/UdpMeasurementReceiver.h
@@ -36,6 +37,11 @@ target_link_libraries(geosensor_core
         Qt6::Network
         SQLite::SQLite3
 )
+
+if (PROJ_FOUND)
+    target_compile_definitions(geosensor_core PUBLIC GEOSENSOR_HAVE_PROJ=1)
+    target_link_libraries(geosensor_core PUBLIC PROJ::proj)
+endif()
 
 target_compile_options(geosensor_core
     PRIVATE

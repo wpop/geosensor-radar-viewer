@@ -20,7 +20,8 @@ jobs:
             ninja-build \
             g++ \
             qt6-base-dev \
-            libsqlite3-dev
+            libsqlite3-dev \
+            libproj-dev
 
       - name: Configure
         run: cmake -S . -B build -G Ninja
