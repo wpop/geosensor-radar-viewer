@@ -437,9 +437,8 @@ void MainWindow::updateTrackStatisticsTable()
             ).count();
 
         const QString timestampText = QDateTime::fromMSecsSinceEpoch(
-            static_cast<qint64>(timestampMs),
-            QTimeZone::UTC
-        ).toString("HH:mm:ss 'UTC'");
+            static_cast<qint64>(timestampMs)
+        ).toUTC().toString("HH:mm:ss 'UTC'");
 
         trackStatisticsTable_->setItem(
             rowIndex,
