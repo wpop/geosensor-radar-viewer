@@ -78,7 +78,11 @@ void MainWindow::setupUi()
         "Clear Stored Measurements",
         leftPanel
     );
-    auto* exportMeasurementsButton = new QPushButton(
+    exportMeasurementsGeoJsonButton_ = new QPushButton(
+        "Export Measurements GeoJSON",
+        leftPanel
+    );
+    auto* exportMeasurementsCsvButton = new QPushButton(
         "Export Measurements CSV",
         leftPanel
     );
@@ -116,7 +120,8 @@ void MainWindow::setupUi()
     leftLayout->addWidget(stopUdpButton_);
     leftLayout->addWidget(clearLiveTargetsButton_);
     leftLayout->addWidget(clearStoredMeasurementsButton_);
-    leftLayout->addWidget(exportMeasurementsButton);
+    leftLayout->addWidget(exportMeasurementsGeoJsonButton_);
+    leftLayout->addWidget(exportMeasurementsCsvButton);
     leftLayout->addWidget(trackStatisticsLabel_);
     leftLayout->addWidget(trackStatisticsTable_, 1);
     leftLayout->setContentsMargins(0, 0, 0, 0);
@@ -209,7 +214,14 @@ void MainWindow::setupUi()
     );
 
     QObject::connect(
-        exportMeasurementsButton,
+        exportMeasurementsGeoJsonButton_,
+        &QPushButton::clicked,
+        this,
+        [this]() { exportStoredMeasurementsToGeoJson(); }
+    );
+
+    QObject::connect(
+        exportMeasurementsCsvButton,
         &QPushButton::clicked,
         this,
         [this]() {
@@ -229,9 +241,9 @@ void MainWindow::setupUi()
                     std::filesystem::path(filePath.toStdString())
                 )
             ) {
-                databaseStatusText_ = QString("Exported: %1").arg(filePath);
+                databaseStatusText_ = QString("Exported CSV: %1").arg(filePath);
             } else {
-                databaseStatusText_ = "Export failed";
+                databaseStatusText_ = "Export CSV failed";
             }
 
             refreshDisplay();
@@ -453,6 +465,33 @@ void MainWindow::clearStoredMeasurements()
         databaseStatusText_ = "Clear failed";
     } else if (databaseStatusText_ != "Enabled") {
         databaseStatusText_ = "Enabled";
+    }
+
+    refreshDisplay();
+}
+
+void MainWindow::exportStoredMeasurementsToGeoJson()
+{
+    const QString filePath = QFileDialog::getSaveFileName(
+        this,
+        "Export Measurements GeoJSON",
+        "data/geosensor_measurements.geojson",
+        "GeoJSON Files (*.geojson);;All Files (*)"
+    );
+
+    if (filePath.isEmpty()) {
+        return;
+    }
+
+    if (
+        measurementDatabase_.exportMeasurementsToGeoJson(
+            std::filesystem::path(filePath.toStdString()),
+            sensorOrigin_
+        )
+    ) {
+        databaseStatusText_ = QString("Exported GeoJSON: %1").arg(filePath);
+    } else {
+        databaseStatusText_ = "Export GeoJSON failed";
     }
 
     refreshDisplay();

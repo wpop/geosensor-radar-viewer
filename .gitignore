@@ -29,6 +29,8 @@ venv/
 
 # Generated data
 data/generated/
+data/*.csv
+data/*.geojson
 
 # OS/editor files
 .DS_Store
