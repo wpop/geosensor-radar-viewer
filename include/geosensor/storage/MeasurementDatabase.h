@@ -1,6 +1,7 @@
 #pragma once
 
 #include "geosensor/data/SensorMeasurement.h"
+#include "geosensor/data/SensorOrigin.h"
 
 #include <chrono>
 #include <cstdint>
@@ -52,6 +53,12 @@ public:
     // Exports all stored measurement rows to a CSV file.
     [[nodiscard]] bool exportMeasurementsToCsv(
         const std::filesystem::path& csvPath
+    );
+
+    // Exports all stored measurement rows to a GeoJSON file.
+    [[nodiscard]] bool exportMeasurementsToGeoJson(
+        const std::filesystem::path& geoJsonPath,
+        const data::SensorOrigin& sensorOrigin
     );
 
     // Returns the total stored measurement count.

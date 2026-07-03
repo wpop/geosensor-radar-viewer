@@ -1,3 +1,4 @@
+#include "geosensor/coordinates/CoordinateTransform.h"
 #include "geosensor/storage/MeasurementDatabase.h"
 
 #include <sqlite3.h>
@@ -7,8 +8,10 @@
 #include <cstdint>
 #include <fstream>
 #include <filesystem>
+#include <iomanip>
 #include <iostream>
 #include <optional>
+#include <locale>
 #include <sstream>
 #include <vector>
 
@@ -96,6 +99,22 @@ std::string readCsvFile(const std::filesystem::path& path)
     std::ostringstream buffer;
     buffer << input.rdbuf();
     return buffer.str();
+}
+
+std::string readTextFile(const std::filesystem::path& path)
+{
+    std::ifstream input(path);
+    std::ostringstream buffer;
+    buffer << input.rdbuf();
+    return buffer.str();
+}
+
+std::string formatJsonDouble(double value)
+{
+    std::ostringstream stream;
+    stream.imbue(std::locale::classic());
+    stream << std::setprecision(17) << value;
+    return stream.str();
 }
 
 void testOpenMigratesLegacySchemaAndStoresTrackAwareRows()
@@ -283,6 +302,108 @@ void testExportMeasurementsWritesCsv()
     std::filesystem::remove(csvPath, errorCode);
 }
 
+void testExportMeasurementsWritesGeoJson()
+{
+    removeTestDatabase();
+
+    geosensor::storage::MeasurementDatabase database;
+    assert(database.open(testDatabasePath()));
+
+    const geosensor::data::SensorOrigin sensorOrigin {
+        .latitudeDeg = 49.2488,
+        .longitudeDeg = -122.9805,
+        .altitudeM = 50.0
+    };
+    const geosensor::coordinates::CoordinateTransform transform(sensorOrigin);
+
+    const geosensor::data::SensorMeasurement firstMeasurement {
+        .rangeM = 1200.0,
+        .azimuthDeg = 45.0,
+        .elevationDeg = 3.0,
+        .intensity = 0.82
+    };
+
+    const geosensor::data::SensorMeasurement secondMeasurement {
+        .rangeM = 950.0,
+        .azimuthDeg = 70.0,
+        .elevationDeg = 1.5,
+        .intensity = 0.64
+    };
+
+    assert(database.insertTrackMeasurement(
+        firstMeasurement,
+        std::nullopt,
+        std::chrono::system_clock::time_point{
+            std::chrono::milliseconds{1'700'000'000'123LL}
+        }
+    ));
+    assert(database.insertTrackMeasurement(
+        secondMeasurement,
+        7,
+        std::chrono::system_clock::time_point{
+            std::chrono::milliseconds{1'700'000'000'456LL}
+        }
+    ));
+
+    const std::filesystem::path geoJsonPath =
+        std::filesystem::temp_directory_path() /
+        "geosensor_measurement_database_tests_export.geojson";
+    std::error_code errorCode;
+    std::filesystem::remove(geoJsonPath, errorCode);
+
+    assert(database.exportMeasurementsToGeoJson(geoJsonPath, sensorOrigin));
+
+    const auto firstPosition = transform.transform(firstMeasurement);
+    const auto secondPosition = transform.transform(secondMeasurement);
+
+    std::ostringstream expected;
+    expected.imbue(std::locale::classic());
+    expected
+        << "{\n"
+        << "  \"type\": \"FeatureCollection\",\n"
+        << "  \"features\": [\n"
+        << "    {\n"
+        << "      \"type\": \"Feature\",\n"
+        << "      \"geometry\": {\n"
+        << "        \"type\": \"Point\",\n"
+        << "        \"coordinates\": ["
+        << formatJsonDouble(firstPosition.geographic.longitudeDeg) << ", "
+        << formatJsonDouble(firstPosition.geographic.latitudeDeg) << "]\n"
+        << "      },\n"
+        << "      \"properties\": {\n"
+        << "        \"target_id\": null,\n"
+        << "        \"timestamp_ms\": 1700000000123,\n"
+        << "        \"range_m\": " << formatJsonDouble(firstMeasurement.rangeM) << ",\n"
+        << "        \"azimuth_deg\": " << formatJsonDouble(firstMeasurement.azimuthDeg) << ",\n"
+        << "        \"elevation_deg\": " << formatJsonDouble(firstMeasurement.elevationDeg) << ",\n"
+        << "        \"intensity\": " << formatJsonDouble(firstMeasurement.intensity) << "\n"
+        << "      }\n"
+        << "    },\n"
+        << "    {\n"
+        << "      \"type\": \"Feature\",\n"
+        << "      \"geometry\": {\n"
+        << "        \"type\": \"Point\",\n"
+        << "        \"coordinates\": ["
+        << formatJsonDouble(secondPosition.geographic.longitudeDeg) << ", "
+        << formatJsonDouble(secondPosition.geographic.latitudeDeg) << "]\n"
+        << "      },\n"
+        << "      \"properties\": {\n"
+        << "        \"target_id\": 7,\n"
+        << "        \"timestamp_ms\": 1700000000456,\n"
+        << "        \"range_m\": " << formatJsonDouble(secondMeasurement.rangeM) << ",\n"
+        << "        \"azimuth_deg\": " << formatJsonDouble(secondMeasurement.azimuthDeg) << ",\n"
+        << "        \"elevation_deg\": " << formatJsonDouble(secondMeasurement.elevationDeg) << ",\n"
+        << "        \"intensity\": " << formatJsonDouble(secondMeasurement.intensity) << "\n"
+        << "      }\n"
+        << "    }\n"
+        << "  ]\n"
+        << "}\n";
+
+    assert(readTextFile(geoJsonPath) == expected.str());
+
+    std::filesystem::remove(geoJsonPath, errorCode);
+}
+
 void testInsertFailsWhenDatabaseIsNotOpen()
 {
     geosensor::storage::MeasurementDatabase database;
@@ -304,6 +425,14 @@ void testInsertFailsWhenDatabaseIsNotOpen()
     assert(!database.exportMeasurementsToCsv(
         std::filesystem::temp_directory_path() / "geosensor_measurement_database_tests_export.csv"
     ));
+    assert(!database.exportMeasurementsToGeoJson(
+        std::filesystem::temp_directory_path() / "geosensor_measurement_database_tests_export.geojson",
+        geosensor::data::SensorOrigin {
+            .latitudeDeg = 49.2488,
+            .longitudeDeg = -122.9805,
+            .altitudeM = 50.0
+        }
+    ));
     assert(!database.measurementCount().has_value());
 }
 
@@ -315,6 +444,7 @@ int main()
     testOpenCreatesFreshDatabaseAndStoresTrackAwareRows();
     testClearMeasurementsEmptiesAnOpenDatabase();
     testExportMeasurementsWritesCsv();
+    testExportMeasurementsWritesGeoJson();
     testInsertFailsWhenDatabaseIsNotOpen();
     removeTestDatabase();
 

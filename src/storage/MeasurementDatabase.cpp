@@ -1,10 +1,13 @@
 #include "geosensor/storage/MeasurementDatabase.h"
 
+#include "geosensor/coordinates/CoordinateTransform.h"
+
 #include <sqlite3.h>
 
 #include <chrono>
 #include <cstdint>
 #include <fstream>
+#include <iomanip>
 #include <locale>
 #include <string>
 #include <string_view>
@@ -172,6 +175,11 @@ bool insertMeasurementRow(
     return stepResult == SQLITE_DONE;
 }
 
+void writeJsonDouble(std::ostream& output, double value)
+{
+    output << std::setprecision(17) << value;
+}
+
 } // namespace
 
 namespace geosensor::storage
@@ -322,6 +330,105 @@ bool MeasurementDatabase::exportMeasurementsToCsv(
         }
     }
 
+    sqlite3_finalize(statement);
+    return stepResult == SQLITE_DONE && static_cast<bool>(output);
+}
+
+bool MeasurementDatabase::exportMeasurementsToGeoJson(
+    const std::filesystem::path& geoJsonPath,
+    const data::SensorOrigin& sensorOrigin
+)
+{
+    if (database_ == nullptr) {
+        return false;
+    }
+
+    std::ofstream output(geoJsonPath);
+    if (!output.is_open()) {
+        return false;
+    }
+
+    output.imbue(std::locale::classic());
+
+    output << "{\n  \"type\": \"FeatureCollection\",\n  \"features\": [\n";
+    if (!output) {
+        return false;
+    }
+
+    const geosensor::coordinates::CoordinateTransform transform(sensorOrigin);
+    sqlite3_stmt* statement = nullptr;
+
+    if (
+        sqlite3_prepare_v2(
+            database_,
+            kExportMeasurementsSql,
+            -1,
+            &statement,
+            nullptr
+        ) != SQLITE_OK
+    ) {
+        return false;
+    }
+
+    bool wroteAnyFeature = false;
+    int stepResult = SQLITE_ROW;
+
+    while ((stepResult = sqlite3_step(statement)) == SQLITE_ROW) {
+        const auto measurement = data::SensorMeasurement {
+            .rangeM = sqlite3_column_double(statement, 2),
+            .azimuthDeg = sqlite3_column_double(statement, 3),
+            .elevationDeg = sqlite3_column_double(statement, 4),
+            .intensity = sqlite3_column_double(statement, 5),
+        };
+        const auto targetPosition = transform.transform(measurement);
+
+        if (wroteAnyFeature) {
+            output << ",\n";
+        }
+        wroteAnyFeature = true;
+
+        output << "    {\n"
+               << "      \"type\": \"Feature\",\n"
+               << "      \"geometry\": {\n"
+               << "        \"type\": \"Point\",\n"
+               << "        \"coordinates\": [";
+        writeJsonDouble(output, targetPosition.geographic.longitudeDeg);
+        output << ", ";
+        writeJsonDouble(output, targetPosition.geographic.latitudeDeg);
+        output << "]\n"
+               << "      },\n"
+               << "      \"properties\": {\n"
+               << "        \"target_id\": ";
+        if (sqlite3_column_type(statement, 0) == SQLITE_NULL) {
+            output << "null";
+        } else {
+            output << sqlite3_column_int64(statement, 0);
+        }
+        output << ",\n"
+               << "        \"timestamp_ms\": "
+               << sqlite3_column_int64(statement, 1) << ",\n"
+               << "        \"range_m\": ";
+        writeJsonDouble(output, measurement.rangeM);
+        output << ",\n"
+               << "        \"azimuth_deg\": ";
+        writeJsonDouble(output, measurement.azimuthDeg);
+        output << ",\n"
+               << "        \"elevation_deg\": ";
+        writeJsonDouble(output, measurement.elevationDeg);
+        output << ",\n"
+               << "        \"intensity\": ";
+        writeJsonDouble(output, measurement.intensity);
+        output << "\n"
+               << "      }\n"
+               << "    }";
+
+        if (!output) {
+            sqlite3_finalize(statement);
+            return false;
+        }
+    }
+
+    output << "\n  ]\n}\n";
     sqlite3_finalize(statement);
     return stepResult == SQLITE_DONE && static_cast<bool>(output);
 }
