@@ -23,6 +23,9 @@ UdpMeasurementReceiver::UdpMeasurementReceiver(QObject* parent)
     qRegisterMetaType<geosensor::data::SensorMeasurement>(
         "geosensor::data::SensorMeasurement"
     );
+    qRegisterMetaType<geosensor::io::UdpMeasurementPacket>(
+        "geosensor::io::UdpMeasurementPacket"
+    );
 
     connect(
         socket_,
@@ -71,15 +74,16 @@ void UdpMeasurementReceiver::readPendingDatagrams()
 
         datagram.truncate(static_cast<int>(bytesRead));
 
-        const auto measurement = geosensor::io::UdpMeasurementParser::parse(
+        const auto packet = geosensor::io::UdpMeasurementParser::parsePacket(
             std::string_view(
                 datagram.constData(),
                 static_cast<std::size_t>(datagram.size())
             )
         );
 
-        if (measurement.has_value()) {
-            emit measurementReceived(*measurement);
+        if (packet.has_value()) {
+            emit packetReceived(*packet);
+            emit measurementReceived(packet->measurement);
             continue;
         }
 

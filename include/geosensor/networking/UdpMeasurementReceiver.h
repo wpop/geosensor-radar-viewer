@@ -1,6 +1,6 @@
 #pragma once
 
-#include "geosensor/data/SensorMeasurement.h"
+#include "geosensor/io/UdpMeasurementParser.h"
 
 #include <QMetaType>
 #include <QObject>
@@ -11,6 +11,7 @@ class QUdpSocket;
 QT_END_NAMESPACE
 
 Q_DECLARE_METATYPE(geosensor::data::SensorMeasurement)
+Q_DECLARE_METATYPE(geosensor::io::UdpMeasurementPacket)
 
 namespace geosensor::networking
 {
@@ -34,6 +35,9 @@ public:
     [[nodiscard]] bool isListening() const;
 
 signals:
+    // Emitted when a UDP payload is parsed into a valid measurement packet.
+    void packetReceived(geosensor::io::UdpMeasurementPacket packet);
+
     // Emitted when a UDP payload is parsed into a valid measurement.
     void measurementReceived(geosensor::data::SensorMeasurement measurement);
 

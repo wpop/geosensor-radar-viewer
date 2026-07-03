@@ -45,6 +45,9 @@ public:
     // Returns the number of stored points.
     [[nodiscard]] std::size_t pointCount() const noexcept;
 
+    // Trims this history to the most recent point count.
+    void trimToLastPoints(std::size_t maxPointCount);
+
 private:
     TrackId targetId_ {};
     std::vector<TrackPoint> points_ {};
@@ -67,6 +70,12 @@ public:
     [[nodiscard]] const std::vector<TrackPoint>* pointsForTrack(
         TrackId targetId
     ) const noexcept;
+
+    // Returns the currently known track identifiers.
+    [[nodiscard]] std::vector<TrackId> trackIds() const;
+
+    // Trims one track history to the most recent point count.
+    void trimTrackToLastPoints(TrackId targetId, std::size_t maxPointCount);
 
     // Removes all stored tracks and points.
     void clear() noexcept;

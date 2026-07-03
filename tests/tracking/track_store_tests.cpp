@@ -73,6 +73,9 @@ void testAddPointGroupsByTargetId()
     assert(secondTrackPoints != nullptr);
     assert(secondTrackPoints->size() == 1);
     assert((*secondTrackPoints)[0].measurement.rangeM == 900.0);
+
+    const auto trackIds = store.trackIds();
+    assert(trackIds.size() == 2);
 }
 
 void testPointsForMissingTrackReturnsNull()
@@ -93,6 +96,42 @@ void testClearRemovesAllTracks()
     assert(store.pointsForTrack(1) == nullptr);
 }
 
+void testTrackHistoryTrimKeepsMostRecentPoints()
+{
+    geosensor::tracking::TrackHistory history(7);
+    history.addPoint(makePoint(7, 700.0, 10.0));
+    history.addPoint(makePoint(7, 710.0, 20.0));
+    history.addPoint(makePoint(7, 720.0, 30.0));
+
+    history.trimToLastPoints(2);
+
+    assert(history.pointCount() == 2);
+    assert(history.points()[0].measurement.rangeM == 710.0);
+    assert(history.points()[1].measurement.rangeM == 720.0);
+}
+
+void testTrackStoreTrimKeepsMostRecentPointsPerTarget()
+{
+    geosensor::tracking::TrackStore store;
+    store.addPoint(makePoint(1, 700.0, 10.0));
+    store.addPoint(makePoint(1, 710.0, 20.0));
+    store.addPoint(makePoint(1, 720.0, 30.0));
+    store.addPoint(makePoint(2, 900.0, 40.0));
+
+    store.trimTrackToLastPoints(1, 2);
+
+    const auto* firstTrackPoints = store.pointsForTrack(1);
+    assert(firstTrackPoints != nullptr);
+    assert(firstTrackPoints->size() == 2);
+    assert((*firstTrackPoints)[0].measurement.rangeM == 710.0);
+    assert((*firstTrackPoints)[1].measurement.rangeM == 720.0);
+
+    const auto* secondTrackPoints = store.pointsForTrack(2);
+    assert(secondTrackPoints != nullptr);
+    assert(secondTrackPoints->size() == 1);
+    assert((*secondTrackPoints)[0].measurement.rangeM == 900.0);
+}
+
 } // namespace
 
 int main()
@@ -101,6 +140,8 @@ int main()
     testAddPointGroupsByTargetId();
     testPointsForMissingTrackReturnsNull();
     testClearRemovesAllTracks();
+    testTrackHistoryTrimKeepsMostRecentPoints();
+    testTrackStoreTrimKeepsMostRecentPointsPerTarget();
 
     std::cout << "All track store tests passed.\n";
 
