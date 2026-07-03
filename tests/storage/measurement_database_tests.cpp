@@ -795,6 +795,192 @@ void testExportMeasurementsWritesGeoJson()
     std::filesystem::remove(geoJsonPath, errorCode);
 }
 
+void testExportMeasurementsFiltersRows()
+{
+    removeTestDatabase();
+
+    geosensor::storage::MeasurementDatabase database;
+    assert(database.open(testDatabasePath()));
+
+    const geosensor::data::SensorOrigin sensorOrigin {
+        .latitudeDeg = 49.2488,
+        .longitudeDeg = -122.9805,
+        .altitudeM = 50.0
+    };
+
+    const geosensor::data::SensorMeasurement nullTargetMeasurement {
+        .rangeM = 10.0,
+        .azimuthDeg = 1.0,
+        .elevationDeg = 0.1,
+        .intensity = 0.01
+    };
+    const geosensor::data::SensorMeasurement targetOneFirstMeasurement {
+        .rangeM = 11.0,
+        .azimuthDeg = 2.0,
+        .elevationDeg = 0.2,
+        .intensity = 0.02
+    };
+    const geosensor::data::SensorMeasurement targetTwoMeasurement {
+        .rangeM = 12.0,
+        .azimuthDeg = 3.0,
+        .elevationDeg = 0.3,
+        .intensity = 0.03
+    };
+    const geosensor::data::SensorMeasurement targetOneSecondMeasurement {
+        .rangeM = 13.0,
+        .azimuthDeg = 4.0,
+        .elevationDeg = 0.4,
+        .intensity = 0.04
+    };
+
+    assert(database.insertTrackMeasurement(
+        nullTargetMeasurement,
+        std::nullopt,
+        std::chrono::system_clock::time_point{
+            std::chrono::milliseconds{1'000LL}
+        }
+    ));
+    assert(database.insertTrackMeasurement(
+        targetOneFirstMeasurement,
+        1,
+        std::chrono::system_clock::time_point{
+            std::chrono::milliseconds{2'000LL}
+        }
+    ));
+    assert(database.insertTrackMeasurement(
+        targetTwoMeasurement,
+        2,
+        std::chrono::system_clock::time_point{
+            std::chrono::milliseconds{3'000LL}
+        }
+    ));
+    assert(database.insertTrackMeasurement(
+        targetOneSecondMeasurement,
+        1,
+        std::chrono::system_clock::time_point{
+            std::chrono::milliseconds{4'000LL}
+        }
+    ));
+
+    const std::filesystem::path csvPath =
+        std::filesystem::temp_directory_path() /
+        "geosensor_measurement_database_tests_filtered.csv";
+    const std::filesystem::path geoJsonPath =
+        std::filesystem::temp_directory_path() /
+        "geosensor_measurement_database_tests_filtered.geojson";
+    std::error_code errorCode;
+    std::filesystem::remove(csvPath, errorCode);
+    std::filesystem::remove(geoJsonPath, errorCode);
+
+    const auto allFilter = geosensor::storage::MeasurementExportFilter {};
+    const auto trackedOnlyFilter = geosensor::storage::MeasurementExportFilter {
+        .mode = geosensor::storage::MeasurementExportMode::TrackedOnly
+    };
+    const auto targetOneFilter = geosensor::storage::MeasurementExportFilter {
+        .mode = geosensor::storage::MeasurementExportMode::TargetId,
+        .targetId = 1
+    };
+    const auto targetTwoFilter = geosensor::storage::MeasurementExportFilter {
+        .mode = geosensor::storage::MeasurementExportMode::TargetId,
+        .targetId = 2
+    };
+
+    assert(database.exportMeasurementsToCsv(csvPath, allFilter));
+    assert(
+        readCsvFile(csvPath) ==
+        "target_id,timestamp_ms,range_m,azimuth_deg,elevation_deg,intensity\n"
+        ",1000,10,1,0.1,0.01\n"
+        "1,2000,11,2,0.2,0.02\n"
+        "2,3000,12,3,0.3,0.03\n"
+        "1,4000,13,4,0.4,0.04\n"
+    );
+
+    assert(database.exportMeasurementsToCsv(csvPath, trackedOnlyFilter));
+    assert(
+        readCsvFile(csvPath) ==
+        "target_id,timestamp_ms,range_m,azimuth_deg,elevation_deg,intensity\n"
+        "1,2000,11,2,0.2,0.02\n"
+        "2,3000,12,3,0.3,0.03\n"
+        "1,4000,13,4,0.4,0.04\n"
+    );
+
+    assert(database.exportMeasurementsToCsv(csvPath, targetOneFilter));
+    assert(
+        readCsvFile(csvPath) ==
+        "target_id,timestamp_ms,range_m,azimuth_deg,elevation_deg,intensity\n"
+        "1,2000,11,2,0.2,0.02\n"
+        "1,4000,13,4,0.4,0.04\n"
+    );
+
+    assert(database.exportMeasurementsToCsv(csvPath, targetTwoFilter));
+    assert(
+        readCsvFile(csvPath) ==
+        "target_id,timestamp_ms,range_m,azimuth_deg,elevation_deg,intensity\n"
+        "2,3000,12,3,0.3,0.03\n"
+    );
+
+    assert(database.exportMeasurementsToGeoJson(
+        geoJsonPath,
+        sensorOrigin,
+        trackedOnlyFilter
+    ));
+
+#ifdef GEOSENSOR_HAVE_GDAL
+    validateGeoJsonExportWithGdal(
+        geoJsonPath,
+        sensorOrigin,
+        {
+            GeoJsonFeatureExpectation {
+                .targetId = 1,
+                .timestampMs = 2'000LL,
+                .measurement = targetOneFirstMeasurement,
+            },
+            GeoJsonFeatureExpectation {
+                .targetId = 2,
+                .timestampMs = 3'000LL,
+                .measurement = targetTwoMeasurement,
+            },
+            GeoJsonFeatureExpectation {
+                .targetId = 1,
+                .timestampMs = 4'000LL,
+                .measurement = targetOneSecondMeasurement,
+            },
+        }
+    );
+
+    assert(database.exportMeasurementsToGeoJson(
+        geoJsonPath,
+        sensorOrigin,
+        targetOneFilter
+    ));
+    validateGeoJsonExportWithGdal(
+        geoJsonPath,
+        sensorOrigin,
+        {
+            GeoJsonFeatureExpectation {
+                .targetId = 1,
+                .timestampMs = 2'000LL,
+                .measurement = targetOneFirstMeasurement,
+            },
+            GeoJsonFeatureExpectation {
+                .targetId = 1,
+                .timestampMs = 4'000LL,
+                .measurement = targetOneSecondMeasurement,
+            },
+        }
+    );
+#else
+    assert(database.exportMeasurementsToGeoJson(
+        geoJsonPath,
+        sensorOrigin,
+        targetOneFilter
+    ));
+#endif
+
+    std::filesystem::remove(csvPath, errorCode);
+    std::filesystem::remove(geoJsonPath, errorCode);
+}
+
 void testExportTracksWritesGeoJson()
 {
     removeTestDatabase();
@@ -967,6 +1153,7 @@ int main()
     testClearMeasurementsEmptiesAnOpenDatabase();
     testExportMeasurementsWritesCsv();
     testExportMeasurementsWritesGeoJson();
+    testExportMeasurementsFiltersRows();
     testExportTracksWritesGeoJson();
     testInsertFailsWhenDatabaseIsNotOpen();
     removeTestDatabase();

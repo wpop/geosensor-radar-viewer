@@ -13,7 +13,9 @@
 #include <vector>
 
 class QPushButton;
+class QComboBox;
 class QTableWidget;
+class QSpinBox;
 
 namespace geosensor::networking
 {
@@ -46,11 +48,15 @@ private:
     void clearLiveTargets();
     void clearStoredMeasurements();
     void refreshStoredTrackStatistics();
+    void exportStoredMeasurementsToCsv();
     void exportStoredMeasurementsToGeoJson();
     void exportTrackedMeasurementsToGeoJson();
     void updateUdpControlStates();
     void updateTrackStatisticsTable();
     void updateStoredTrackStatisticsTable();
+    void updateMeasurementExportFilterControls();
+    [[nodiscard]] geosensor::storage::MeasurementExportFilter
+    currentMeasurementExportFilter() const;
     [[nodiscard]] std::vector<std::vector<geosensor::data::EnuPosition>>
     buildTargetTrails() const;
 
@@ -65,6 +71,9 @@ private:
     QPushButton* stopUdpButton_ {};
     QPushButton* clearLiveTargetsButton_ {};
     QPushButton* clearStoredMeasurementsButton_ {};
+    QLabel* measurementExportFilterLabel_ {};
+    QComboBox* measurementExportFilterComboBox_ {};
+    QSpinBox* measurementExportTargetIdSpinBox_ {};
     QPushButton* exportMeasurementsGeoJsonButton_ {};
     QPushButton* exportTracksGeoJsonButton_ {};
     geosensor::networking::UdpMeasurementReceiver* udpReceiver_ {};
