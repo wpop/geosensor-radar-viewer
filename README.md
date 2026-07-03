@@ -14,6 +14,7 @@ GeoSensor Radar Viewer is a C++20 and Qt6 desktop application for visualizing ge
 - CSV loading for radar-style sensor measurements
 - Live UDP measurement receiver on `127.0.0.1:5005`
 - Python UDP simulator with static, moving, and multi-target modes
+- UDP payloads can include `target_id` for track-aware visualization
 - Live UDP controls for start, stop, and clear
 - Range / azimuth / elevation to local ENU coordinate transformation
 - Approximate ENU to WGS84 latitude / longitude conversion
@@ -22,6 +23,7 @@ GeoSensor Radar Viewer is a C++20 and Qt6 desktop application for visualizing ge
   - range rings
   - range labels
   - separate CSV/sample and live UDP target styles
+  - short per-target trails for UDP packets that include `target_id`
   - live UDP target buffer limited to the latest 100 positions
   - total valid UDP packet counter
   - legend
@@ -85,7 +87,7 @@ Run the multi-target UDP simulator in Terminal 2:
 ./scripts/simulator/udp_sensor_simulator.py --mode multi --interval 0.2 --azimuth-step 5
 ```
 
-In the radar view, CSV/sample targets remain visible and are styled separately from live UDP targets. `Start UDP` starts or resumes receiving live packets, `Stop UDP` pauses live receiving, and `Clear Live Targets` removes only the live UDP targets while keeping the CSV/sample targets on screen. Live targets are limited to the latest 100 positions, and the `Total valid UDP packets` status line continues increasing even after the live target buffer reaches 100. In moving mode, azimuth changes gradually so the red live target moves around the radar. Multi mode sends several moving detections per update cycle and now includes `target_id` values in the UDP payload, although the viewer does not use target IDs yet.
+In the radar view, CSV/sample targets remain visible and are styled separately from live UDP targets. `Start UDP` starts or resumes receiving live packets, `Stop UDP` pauses live receiving, and `Clear Live Targets` removes only the live UDP targets while keeping the CSV/sample targets on screen. Live targets are limited to the latest 100 positions, and the `Total valid UDP packets` status line continues increasing even after the live target buffer reaches 100. In moving mode, azimuth changes gradually so the red live target moves around the radar. When UDP packets include `target_id`, the viewer groups detections into short per-target trails. Legacy 4-field UDP packets still appear as live detections, but they do not carry track identity.
 
 ## SQLite Storage
 
@@ -112,7 +114,7 @@ Supported UDP payload formats:
 7,1200.0,45.0,3.0,0.82
 ```
 
-The 4-field format is kept for backward compatibility. The 5-field format adds `target_id` as the first field.
+The 4-field format is kept for backward compatibility. The 5-field format adds `target_id` as the first field and enables target-aware trail visualization in the viewer.
 
 Run it with the default destination `127.0.0.1:5005` and a `1.0` second interval:
 
@@ -138,7 +140,7 @@ Run a multi-target mode with several moving detections:
 ./scripts/simulator/udp_sensor_simulator.py --mode multi --azimuth-step 5.0
 ```
 
-In multi-target mode, the simulator sends one UDP packet per target for each update cycle. These packets include `target_id`, but the current viewer still renders detections without track identity.
+In multi-target mode, the simulator sends one UDP packet per target for each update cycle. These packets include `target_id`, so the viewer can render short per-target trails. Legacy 4-field packets still work and show up as live detections without track identity.
 
 Optional arguments:
 
