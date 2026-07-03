@@ -5,9 +5,11 @@
 #include <cassert>
 #include <chrono>
 #include <cstdint>
+#include <fstream>
 #include <filesystem>
 #include <iostream>
 #include <optional>
+#include <sstream>
 #include <vector>
 
 namespace
@@ -86,6 +88,14 @@ std::vector<StoredMeasurementRow> readStoredMeasurementRows()
     assert(sqlite3_close(database) == SQLITE_OK);
 
     return rows;
+}
+
+std::string readCsvFile(const std::filesystem::path& path)
+{
+    std::ifstream input(path);
+    std::ostringstream buffer;
+    buffer << input.rdbuf();
+    return buffer.str();
 }
 
 void testOpenMigratesLegacySchemaAndStoresTrackAwareRows()
@@ -218,6 +228,61 @@ void testClearMeasurementsEmptiesAnOpenDatabase()
     assert(rows.empty());
 }
 
+void testExportMeasurementsWritesCsv()
+{
+    removeTestDatabase();
+
+    geosensor::storage::MeasurementDatabase database;
+    assert(database.open(testDatabasePath()));
+
+    const geosensor::data::SensorMeasurement firstMeasurement {
+        .rangeM = 1200.0,
+        .azimuthDeg = 45.0,
+        .elevationDeg = 3.0,
+        .intensity = 0.82
+    };
+
+    const geosensor::data::SensorMeasurement secondMeasurement {
+        .rangeM = 950.0,
+        .azimuthDeg = 70.0,
+        .elevationDeg = 1.5,
+        .intensity = 0.64
+    };
+
+    assert(database.insertTrackMeasurement(
+        firstMeasurement,
+        std::nullopt,
+        std::chrono::system_clock::time_point{
+            std::chrono::milliseconds{1'700'000'000'123LL}
+        }
+    ));
+    assert(database.insertTrackMeasurement(
+        secondMeasurement,
+        7,
+        std::chrono::system_clock::time_point{
+            std::chrono::milliseconds{1'700'000'000'456LL}
+        }
+    ));
+
+    const std::filesystem::path csvPath =
+        std::filesystem::temp_directory_path() /
+        "geosensor_measurement_database_tests_export.csv";
+    std::error_code errorCode;
+    std::filesystem::remove(csvPath, errorCode);
+
+    assert(database.exportMeasurementsToCsv(csvPath));
+
+    const std::string csvText = readCsvFile(csvPath);
+    const std::string expectedCsv =
+        "target_id,timestamp_ms,range_m,azimuth_deg,elevation_deg,intensity\n"
+        ",1700000000123,1200,45,3,0.82\n"
+        "7,1700000000456,950,70,1.5,0.64\n";
+
+    assert(csvText == expectedCsv);
+
+    std::filesystem::remove(csvPath, errorCode);
+}
+
 void testInsertFailsWhenDatabaseIsNotOpen()
 {
     geosensor::storage::MeasurementDatabase database;
@@ -236,6 +301,9 @@ void testInsertFailsWhenDatabaseIsNotOpen()
         std::chrono::system_clock::now()
     ));
     assert(!database.clearMeasurements());
+    assert(!database.exportMeasurementsToCsv(
+        std::filesystem::temp_directory_path() / "geosensor_measurement_database_tests_export.csv"
+    ));
     assert(!database.measurementCount().has_value());
 }
 
@@ -246,6 +314,7 @@ int main()
     testOpenMigratesLegacySchemaAndStoresTrackAwareRows();
     testOpenCreatesFreshDatabaseAndStoresTrackAwareRows();
     testClearMeasurementsEmptiesAnOpenDatabase();
+    testExportMeasurementsWritesCsv();
     testInsertFailsWhenDatabaseIsNotOpen();
     removeTestDatabase();
 

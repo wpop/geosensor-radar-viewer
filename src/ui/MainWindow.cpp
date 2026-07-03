@@ -9,6 +9,7 @@
 
 #include <QDateTime>
 #include <QHeaderView>
+#include <QFileDialog>
 #include <QHBoxLayout>
 #include <QVBoxLayout>
 #include <QFont>
@@ -77,6 +78,10 @@ void MainWindow::setupUi()
         "Clear Stored Measurements",
         leftPanel
     );
+    auto* exportMeasurementsButton = new QPushButton(
+        "Export Measurements CSV",
+        leftPanel
+    );
     trackStatisticsLabel_ = new QLabel("Track statistics", leftPanel);
     trackStatisticsTable_ = new QTableWidget(leftPanel);
 
@@ -111,6 +116,7 @@ void MainWindow::setupUi()
     leftLayout->addWidget(stopUdpButton_);
     leftLayout->addWidget(clearLiveTargetsButton_);
     leftLayout->addWidget(clearStoredMeasurementsButton_);
+    leftLayout->addWidget(exportMeasurementsButton);
     leftLayout->addWidget(trackStatisticsLabel_);
     leftLayout->addWidget(trackStatisticsTable_, 1);
     leftLayout->setContentsMargins(0, 0, 0, 0);
@@ -200,6 +206,36 @@ void MainWindow::setupUi()
         &QPushButton::clicked,
         this,
         [this]() { clearStoredMeasurements(); }
+    );
+
+    QObject::connect(
+        exportMeasurementsButton,
+        &QPushButton::clicked,
+        this,
+        [this]() {
+            const QString filePath = QFileDialog::getSaveFileName(
+                this,
+                "Export Measurements CSV",
+                "data/geosensor_measurements.csv",
+                "CSV Files (*.csv);;All Files (*)"
+            );
+
+            if (filePath.isEmpty()) {
+                return;
+            }
+
+            if (
+                measurementDatabase_.exportMeasurementsToCsv(
+                    std::filesystem::path(filePath.toStdString())
+                )
+            ) {
+                databaseStatusText_ = QString("Exported: %1").arg(filePath);
+            } else {
+                databaseStatusText_ = "Export failed";
+            }
+
+            refreshDisplay();
+        }
     );
 
     startUdpReceiver();
