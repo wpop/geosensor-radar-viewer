@@ -46,6 +46,9 @@ public:
         const std::chrono::system_clock::time_point& timestamp
     );
 
+    // Deletes all stored measurement rows.
+    [[nodiscard]] bool clearMeasurements();
+
     // Returns the total stored measurement count.
     [[nodiscard]] std::optional<std::int64_t> measurementCount() const;
 

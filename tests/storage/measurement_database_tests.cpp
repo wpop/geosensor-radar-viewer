@@ -181,6 +181,43 @@ void testOpenCreatesFreshDatabaseAndStoresTrackAwareRows()
     assert(rows[1].timestampMs == 1'700'000'000'123LL);
 }
 
+void testClearMeasurementsEmptiesAnOpenDatabase()
+{
+    removeTestDatabase();
+
+    geosensor::storage::MeasurementDatabase database;
+    assert(database.open(testDatabasePath()));
+
+    const geosensor::data::SensorMeasurement measurement {
+        .rangeM = 1200.0,
+        .azimuthDeg = 45.0,
+        .elevationDeg = 3.0,
+        .intensity = 0.82
+    };
+
+    assert(database.insertMeasurement(measurement));
+    assert(database.insertTrackMeasurement(
+        measurement,
+        7,
+        std::chrono::system_clock::time_point{
+            std::chrono::milliseconds{1'700'000'000'123LL}
+        }
+    ));
+
+    const auto countBeforeClear = database.measurementCount();
+    assert(countBeforeClear.has_value());
+    assert(*countBeforeClear == 2);
+
+    assert(database.clearMeasurements());
+
+    const auto countAfterClear = database.measurementCount();
+    assert(countAfterClear.has_value());
+    assert(*countAfterClear == 0);
+
+    const auto rows = readStoredMeasurementRows();
+    assert(rows.empty());
+}
+
 void testInsertFailsWhenDatabaseIsNotOpen()
 {
     geosensor::storage::MeasurementDatabase database;
@@ -198,6 +235,7 @@ void testInsertFailsWhenDatabaseIsNotOpen()
         7,
         std::chrono::system_clock::now()
     ));
+    assert(!database.clearMeasurements());
     assert(!database.measurementCount().has_value());
 }
 
@@ -207,6 +245,7 @@ int main()
 {
     testOpenMigratesLegacySchemaAndStoresTrackAwareRows();
     testOpenCreatesFreshDatabaseAndStoresTrackAwareRows();
+    testClearMeasurementsEmptiesAnOpenDatabase();
     testInsertFailsWhenDatabaseIsNotOpen();
     removeTestDatabase();
 

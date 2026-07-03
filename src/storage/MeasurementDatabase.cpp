@@ -29,6 +29,9 @@ constexpr const char* kInsertMeasurementSql =
 constexpr const char* kMeasurementCountSql =
     "SELECT COUNT(*) FROM measurements;";
 
+constexpr const char* kClearMeasurementsSql =
+    "DELETE FROM measurements;";
+
 constexpr const char* kTargetIdColumnName = "target_id";
 constexpr const char* kTimestampColumnName = "timestamp_ms";
 
@@ -239,6 +242,21 @@ bool MeasurementDatabase::insertTrackMeasurement(
         targetId,
         timestampMs
     );
+}
+
+bool MeasurementDatabase::clearMeasurements()
+{
+    if (database_ == nullptr) {
+        return false;
+    }
+
+    return sqlite3_exec(
+        database_,
+        kClearMeasurementsSql,
+        nullptr,
+        nullptr,
+        nullptr
+    ) == SQLITE_OK;
 }
 
 std::optional<std::int64_t> MeasurementDatabase::measurementCount() const
