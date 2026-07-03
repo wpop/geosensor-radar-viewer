@@ -14,7 +14,6 @@
 #include <QFont>
 #include <QTableWidget>
 #include <QTableWidgetItem>
-#include <QTimeZone>
 #include <QObject>
 #include <QPushButton>
 #include <QString>
