@@ -10,6 +10,11 @@ import socket
 import time
 from typing import Iterator
 
+MeasurementPayload = (
+    tuple[float, float, float, float]
+    | tuple[int, float, float, float, float]
+)
+
 
 def parse_args() -> argparse.Namespace:
     """Parse command-line options for the UDP simulator."""
@@ -43,7 +48,7 @@ def parse_args() -> argparse.Namespace:
         "--azimuth-step",
         type=float,
         default=5.0,
-        help="Azimuth step per packet in moving mode. Default: 5.0",
+        help="Azimuth step per packet in moving and multi modes. Default: 5.0",
     )
     return parser.parse_args()
 
@@ -76,10 +81,11 @@ def moving_measurement_stream(
 
 def multi_measurement_cycle_stream(
     azimuth_step: float,
-) -> Iterator[tuple[tuple[float, float, float, float], ...]]:
+) -> Iterator[tuple[MeasurementPayload, ...]]:
     """Yield several moving targets for each update cycle."""
     targets = [
         {
+            "target_id": 1,
             "range_m": 700.0,
             "azimuth_deg": 20.0,
             "azimuth_step": azimuth_step,
@@ -87,6 +93,7 @@ def multi_measurement_cycle_stream(
             "intensity": 0.82,
         },
         {
+            "target_id": 2,
             "range_m": 1050.0,
             "azimuth_deg": 180.0,
             "azimuth_step": azimuth_step * 0.6,
@@ -94,6 +101,7 @@ def multi_measurement_cycle_stream(
             "intensity": 0.88,
         },
         {
+            "target_id": 3,
             "range_m": 1350.0,
             "azimuth_deg": 300.0,
             "azimuth_step": -azimuth_step * 0.8,
@@ -105,6 +113,7 @@ def multi_measurement_cycle_stream(
     while True:
         yield tuple(
             (
+                target["target_id"],
                 target["range_m"],
                 target["azimuth_deg"],
                 target["elevation_deg"],
@@ -120,9 +129,19 @@ def multi_measurement_cycle_stream(
 
 
 def format_measurement(
-    measurement: tuple[float, float, float, float]
+    measurement: MeasurementPayload
 ) -> str:
     """Format one measurement as CSV text for a single UDP packet."""
+    if len(measurement) == 5:
+        target_id, range_m, azimuth_deg, elevation_deg, intensity = measurement
+        return (
+            f"{target_id},"
+            f"{range_m:.1f},"
+            f"{azimuth_deg:.1f},"
+            f"{elevation_deg:.1f},"
+            f"{intensity:.2f}"
+        )
+
     range_m, azimuth_deg, elevation_deg, intensity = measurement
     return (
         f"{range_m:.1f},"
