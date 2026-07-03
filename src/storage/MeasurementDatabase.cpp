@@ -6,11 +6,19 @@
 
 #include <chrono>
 #include <cstdint>
+#include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <locale>
 #include <string>
 #include <string_view>
+
+#ifdef GEOSENSOR_HAVE_GDAL
+#include <gdal.h>
+#include <ogr_api.h>
+#include <ogr_core.h>
+#include <ogr_srs_api.h>
+#endif
 
 namespace
 {
@@ -175,10 +183,227 @@ bool insertMeasurementRow(
     return stepResult == SQLITE_DONE;
 }
 
-void writeJsonDouble(std::ostream& output, double value)
+[[maybe_unused]] void writeJsonDouble(std::ostream& output, double value)
 {
     output << std::setprecision(17) << value;
 }
+
+#ifdef GEOSENSOR_HAVE_GDAL
+bool addGdalField(
+    OGRLayerH layer,
+    const char* fieldName,
+    OGRFieldType fieldType
+)
+{
+    OGRFieldDefnH fieldDefinition = OGR_Fld_Create(fieldName, fieldType);
+    if (fieldDefinition == nullptr) {
+        return false;
+    }
+
+    OGR_Fld_SetNullable(fieldDefinition, TRUE);
+
+    const OGRErr createFieldResult = OGR_L_CreateField(layer, fieldDefinition, TRUE);
+    OGR_Fld_Destroy(fieldDefinition);
+
+    return createFieldResult == OGRERR_NONE;
+}
+
+bool exportMeasurementsToGeoJsonWithGdal(
+    sqlite3* database,
+    const std::filesystem::path& geoJsonPath,
+    const geosensor::data::SensorOrigin& sensorOrigin
+)
+{
+    std::error_code errorCode;
+    std::filesystem::remove(geoJsonPath, errorCode);
+
+    GDALAllRegister();
+
+    OGRSFDriverH driver = OGRGetDriverByName("GeoJSON");
+    if (driver == nullptr) {
+        return false;
+    }
+
+    OGRDataSourceH dataSource =
+        OGR_Dr_CreateDataSource(driver, geoJsonPath.string().c_str(), nullptr);
+    if (dataSource == nullptr) {
+        return false;
+    }
+
+    OGRSpatialReferenceH spatialReference = OSRNewSpatialReference(nullptr);
+    if (spatialReference == nullptr) {
+        OGR_DS_Destroy(dataSource);
+        return false;
+    }
+
+    sqlite3_stmt* statement = nullptr;
+
+    if (
+        OSRImportFromEPSG(spatialReference, 4326) != OGRERR_NONE
+    ) {
+        OSRDestroySpatialReference(spatialReference);
+        OGR_DS_Destroy(dataSource);
+        return false;
+    }
+
+    OSRSetAxisMappingStrategy(spatialReference, OAMS_TRADITIONAL_GIS_ORDER);
+
+    OGRLayerH layer = OGR_DS_CreateLayer(
+        dataSource,
+        "measurements",
+        spatialReference,
+        wkbPoint,
+        nullptr
+    );
+    if (layer == nullptr) {
+        OSRDestroySpatialReference(spatialReference);
+        OGR_DS_Destroy(dataSource);
+        return false;
+    }
+
+    if (
+        !addGdalField(layer, "target_id", OFTInteger64) ||
+        !addGdalField(layer, "timestamp_ms", OFTInteger64) ||
+        !addGdalField(layer, "range_m", OFTReal) ||
+        !addGdalField(layer, "azimuth_deg", OFTReal) ||
+        !addGdalField(layer, "elevation_deg", OFTReal) ||
+        !addGdalField(layer, "intensity", OFTReal)
+    ) {
+        OSRDestroySpatialReference(spatialReference);
+        OGR_DS_Destroy(dataSource);
+        return false;
+    }
+
+    const geosensor::coordinates::CoordinateTransform transform(sensorOrigin);
+
+    if (
+        sqlite3_prepare_v2(
+            database,
+            kExportMeasurementsSql,
+            -1,
+            &statement,
+            nullptr
+        ) != SQLITE_OK
+    ) {
+        OSRDestroySpatialReference(spatialReference);
+        OGR_DS_Destroy(dataSource);
+        return false;
+    }
+
+    const OGRFeatureDefnH layerDefinition = OGR_L_GetLayerDefn(layer);
+    const int targetIdFieldIndex = OGR_FD_GetFieldIndex(layerDefinition, "target_id");
+    const int timestampFieldIndex =
+        OGR_FD_GetFieldIndex(layerDefinition, "timestamp_ms");
+    const int rangeFieldIndex = OGR_FD_GetFieldIndex(layerDefinition, "range_m");
+    const int azimuthFieldIndex =
+        OGR_FD_GetFieldIndex(layerDefinition, "azimuth_deg");
+    const int elevationFieldIndex =
+        OGR_FD_GetFieldIndex(layerDefinition, "elevation_deg");
+    const int intensityFieldIndex =
+        OGR_FD_GetFieldIndex(layerDefinition, "intensity");
+
+    if (
+        targetIdFieldIndex < 0 ||
+        timestampFieldIndex < 0 ||
+        rangeFieldIndex < 0 ||
+        azimuthFieldIndex < 0 ||
+        elevationFieldIndex < 0 ||
+        intensityFieldIndex < 0
+    ) {
+        sqlite3_finalize(statement);
+        OSRDestroySpatialReference(spatialReference);
+        OGR_DS_Destroy(dataSource);
+        return false;
+    }
+
+    int stepResult = SQLITE_ROW;
+
+    while ((stepResult = sqlite3_step(statement)) == SQLITE_ROW) {
+        const auto measurement = geosensor::data::SensorMeasurement {
+            .rangeM = sqlite3_column_double(statement, 2),
+            .azimuthDeg = sqlite3_column_double(statement, 3),
+            .elevationDeg = sqlite3_column_double(statement, 4),
+            .intensity = sqlite3_column_double(statement, 5),
+        };
+        const auto targetPosition = transform.transform(measurement);
+
+        OGRFeatureH feature = OGR_F_Create(layerDefinition);
+        if (feature == nullptr) {
+            sqlite3_finalize(statement);
+            OSRDestroySpatialReference(spatialReference);
+            OGR_DS_Destroy(dataSource);
+            return false;
+        }
+
+        if (sqlite3_column_type(statement, 0) == SQLITE_NULL) {
+            OGR_F_SetFieldNull(feature, targetIdFieldIndex);
+        } else {
+            OGR_F_SetFieldInteger64(
+                feature,
+                targetIdFieldIndex,
+                sqlite3_column_int64(statement, 0)
+            );
+        }
+
+        OGR_F_SetFieldInteger64(
+            feature,
+            timestampFieldIndex,
+            sqlite3_column_int64(statement, 1)
+        );
+        OGR_F_SetFieldDouble(feature, rangeFieldIndex, measurement.rangeM);
+        OGR_F_SetFieldDouble(feature, azimuthFieldIndex, measurement.azimuthDeg);
+        OGR_F_SetFieldDouble(
+            feature,
+            elevationFieldIndex,
+            measurement.elevationDeg
+        );
+        OGR_F_SetFieldDouble(feature, intensityFieldIndex, measurement.intensity);
+
+        OGRGeometryH pointGeometry = OGR_G_CreateGeometry(wkbPoint);
+        if (pointGeometry == nullptr) {
+            OGR_F_Destroy(feature);
+            sqlite3_finalize(statement);
+            OSRDestroySpatialReference(spatialReference);
+            OGR_DS_Destroy(dataSource);
+            return false;
+        }
+
+        OGR_G_SetPoint_2D(
+            pointGeometry,
+            0,
+            targetPosition.geographic.longitudeDeg,
+            targetPosition.geographic.latitudeDeg
+        );
+
+        if (OGR_F_SetGeometryDirectly(feature, pointGeometry) != OGRERR_NONE) {
+            OGR_F_Destroy(feature);
+            sqlite3_finalize(statement);
+            OSRDestroySpatialReference(spatialReference);
+            OGR_DS_Destroy(dataSource);
+            return false;
+        }
+
+        if (OGR_L_CreateFeature(layer, feature) != OGRERR_NONE) {
+            OGR_F_Destroy(feature);
+            sqlite3_finalize(statement);
+            OSRDestroySpatialReference(spatialReference);
+            OGR_DS_Destroy(dataSource);
+            return false;
+        }
+
+        OGR_F_Destroy(feature);
+    }
+
+    const bool writeSucceeded = stepResult == SQLITE_DONE;
+    const bool syncSucceeded = OGR_DS_SyncToDisk(dataSource) == OGRERR_NONE;
+
+    sqlite3_finalize(statement);
+    OSRDestroySpatialReference(spatialReference);
+    OGR_DS_Destroy(dataSource);
+
+    return writeSucceeded && syncSucceeded && std::filesystem::exists(geoJsonPath);
+}
+#endif
 
 } // namespace
 
@@ -343,6 +568,13 @@ bool MeasurementDatabase::exportMeasurementsToGeoJson(
         return false;
     }
 
+#ifdef GEOSENSOR_HAVE_GDAL
+    return exportMeasurementsToGeoJsonWithGdal(
+        database_,
+        geoJsonPath,
+        sensorOrigin
+    );
+#else
     std::ofstream output(geoJsonPath);
     if (!output.is_open()) {
         return false;
@@ -431,6 +663,7 @@ bool MeasurementDatabase::exportMeasurementsToGeoJson(
     output << "\n  ]\n}\n";
     sqlite3_finalize(statement);
     return stepResult == SQLITE_DONE && static_cast<bool>(output);
+#endif
 }
 
 std::optional<std::int64_t> MeasurementDatabase::measurementCount() const

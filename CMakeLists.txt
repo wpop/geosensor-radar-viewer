@@ -15,6 +15,11 @@ set(CMAKE_AUTOMOC ON)
 find_package(Qt6 REQUIRED COMPONENTS Widgets Network)
 find_package(SQLite3 REQUIRED)
 find_package(PROJ QUIET)
+find_package(PkgConfig QUIET)
+
+if (PkgConfig_FOUND)
+    pkg_check_modules(GDAL QUIET IMPORTED_TARGET gdal)
+endif()
 
 add_library(geosensor_core STATIC
     include/geosensor/networking/UdpMeasurementReceiver.h
@@ -41,6 +46,11 @@ target_link_libraries(geosensor_core
 if (PROJ_FOUND)
     target_compile_definitions(geosensor_core PUBLIC GEOSENSOR_HAVE_PROJ=1)
     target_link_libraries(geosensor_core PUBLIC PROJ::proj)
+endif()
+
+if (GDAL_FOUND)
+    target_compile_definitions(geosensor_core PUBLIC GEOSENSOR_HAVE_GDAL=1)
+    target_link_libraries(geosensor_core PUBLIC PkgConfig::GDAL)
 endif()
 
 target_compile_options(geosensor_core

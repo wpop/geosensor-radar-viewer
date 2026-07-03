@@ -21,7 +21,8 @@ jobs:
             g++ \
             qt6-base-dev \
             libsqlite3-dev \
-            libproj-dev
+            libproj-dev \
+            libgdal-dev
 
       - name: Configure
         run: cmake -S . -B build -G Ninja
