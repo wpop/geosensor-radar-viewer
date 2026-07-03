@@ -82,6 +82,10 @@ void MainWindow::setupUi()
         "Export Measurements GeoJSON",
         leftPanel
     );
+    exportTracksGeoJsonButton_ = new QPushButton(
+        "Export Tracks GeoJSON",
+        leftPanel
+    );
     auto* exportMeasurementsCsvButton = new QPushButton(
         "Export Measurements CSV",
         leftPanel
@@ -121,6 +125,7 @@ void MainWindow::setupUi()
     leftLayout->addWidget(clearLiveTargetsButton_);
     leftLayout->addWidget(clearStoredMeasurementsButton_);
     leftLayout->addWidget(exportMeasurementsGeoJsonButton_);
+    leftLayout->addWidget(exportTracksGeoJsonButton_);
     leftLayout->addWidget(exportMeasurementsCsvButton);
     leftLayout->addWidget(trackStatisticsLabel_);
     leftLayout->addWidget(trackStatisticsTable_, 1);
@@ -218,6 +223,13 @@ void MainWindow::setupUi()
         &QPushButton::clicked,
         this,
         [this]() { exportStoredMeasurementsToGeoJson(); }
+    );
+
+    QObject::connect(
+        exportTracksGeoJsonButton_,
+        &QPushButton::clicked,
+        this,
+        [this]() { exportTrackedMeasurementsToGeoJson(); }
     );
 
     QObject::connect(
@@ -492,6 +504,33 @@ void MainWindow::exportStoredMeasurementsToGeoJson()
         databaseStatusText_ = QString("Exported GeoJSON: %1").arg(filePath);
     } else {
         databaseStatusText_ = "Export GeoJSON failed";
+    }
+
+    refreshDisplay();
+}
+
+void MainWindow::exportTrackedMeasurementsToGeoJson()
+{
+    const QString filePath = QFileDialog::getSaveFileName(
+        this,
+        "Export Tracks GeoJSON",
+        "data/geosensor_tracks.geojson",
+        "GeoJSON Files (*.geojson);;All Files (*)"
+    );
+
+    if (filePath.isEmpty()) {
+        return;
+    }
+
+    if (
+        measurementDatabase_.exportTracksToGeoJson(
+            std::filesystem::path(filePath.toStdString()),
+            sensorOrigin_
+        )
+    ) {
+        databaseStatusText_ = QString("Exported Tracks GeoJSON: %1").arg(filePath);
+    } else {
+        databaseStatusText_ = "Export Tracks GeoJSON failed";
     }
 
     refreshDisplay();
