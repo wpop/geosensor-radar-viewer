@@ -31,6 +31,17 @@ struct StoredMeasurementRow
     std::int64_t timestampMs {};
 };
 
+struct TrackStatisticsExpectation
+{
+    std::int64_t targetId {};
+    std::int64_t pointCount {};
+    std::int64_t firstTimestampMs {};
+    std::int64_t lastTimestampMs {};
+    double minRangeM {};
+    double maxRangeM {};
+    double averageIntensity {};
+};
+
 std::filesystem::path testDatabasePath()
 {
     return
@@ -98,6 +109,28 @@ std::vector<StoredMeasurementRow> readStoredMeasurementRows()
     assert(sqlite3_close(database) == SQLITE_OK);
 
     return rows;
+}
+
+bool approximatelyEqualValue(double lhs, double rhs, double epsilon = 1e-9)
+{
+    return std::abs(lhs - rhs) <= epsilon;
+}
+
+void assertTrackStatisticsEqual(
+    const geosensor::storage::MeasurementDatabase::TrackStatistics& statistics,
+    const TrackStatisticsExpectation& expectation
+)
+{
+    assert(statistics.targetId == expectation.targetId);
+    assert(statistics.pointCount == expectation.pointCount);
+    assert(statistics.firstTimestampMs == expectation.firstTimestampMs);
+    assert(statistics.lastTimestampMs == expectation.lastTimestampMs);
+    assert(approximatelyEqualValue(statistics.minRangeM, expectation.minRangeM));
+    assert(approximatelyEqualValue(statistics.maxRangeM, expectation.maxRangeM));
+    assert(approximatelyEqualValue(
+        statistics.averageIntensity,
+        expectation.averageIntensity
+    ));
 }
 
 std::string readCsvFile(const std::filesystem::path& path)
@@ -434,6 +467,118 @@ void testOpenCreatesFreshDatabaseAndStoresTrackAwareRows()
     assert(rows[1].targetId.has_value());
     assert(*rows[1].targetId == 7);
     assert(rows[1].timestampMs == 1'700'000'000'123LL);
+}
+
+void testTrackStatisticsReturnsEmptyVectorForOpenEmptyDatabase()
+{
+    removeTestDatabase();
+
+    geosensor::storage::MeasurementDatabase database;
+    assert(database.open(testDatabasePath()));
+
+    const auto statistics = database.trackStatistics();
+    assert(statistics.has_value());
+    assert(statistics->empty());
+}
+
+void testTrackStatisticsAggregatesRowsAndIgnoresNullTargetId()
+{
+    removeTestDatabase();
+
+    geosensor::storage::MeasurementDatabase database;
+    assert(database.open(testDatabasePath()));
+
+    const geosensor::data::SensorMeasurement targetOneEarlyMeasurement {
+        .rangeM = 100.0,
+        .azimuthDeg = 10.0,
+        .elevationDeg = 1.0,
+        .intensity = 0.10
+    };
+    const geosensor::data::SensorMeasurement targetOneMiddleMeasurement {
+        .rangeM = 120.0,
+        .azimuthDeg = 12.0,
+        .elevationDeg = 1.2,
+        .intensity = 0.30
+    };
+    const geosensor::data::SensorMeasurement targetOneLateMeasurement {
+        .rangeM = 110.0,
+        .azimuthDeg = 11.0,
+        .elevationDeg = 1.1,
+        .intensity = 0.20
+    };
+    const geosensor::data::SensorMeasurement targetTwoFirstMeasurement {
+        .rangeM = 130.0,
+        .azimuthDeg = 20.0,
+        .elevationDeg = 2.0,
+        .intensity = 0.40
+    };
+    const geosensor::data::SensorMeasurement targetTwoSecondMeasurement {
+        .rangeM = 140.0,
+        .azimuthDeg = 21.0,
+        .elevationDeg = 2.1,
+        .intensity = 0.50
+    };
+
+    assert(database.insertTrackMeasurement(
+        targetOneLateMeasurement,
+        1,
+        std::chrono::system_clock::time_point{std::chrono::milliseconds{3'000LL}}
+    ));
+    assert(database.insertMeasurement(geosensor::data::SensorMeasurement {
+        .rangeM = 160.0,
+        .azimuthDeg = 30.0,
+        .elevationDeg = 3.0,
+        .intensity = 0.70
+    }));
+    assert(database.insertTrackMeasurement(
+        targetOneEarlyMeasurement,
+        1,
+        std::chrono::system_clock::time_point{std::chrono::milliseconds{1'000LL}}
+    ));
+    assert(database.insertTrackMeasurement(
+        targetTwoFirstMeasurement,
+        2,
+        std::chrono::system_clock::time_point{std::chrono::milliseconds{4'000LL}}
+    ));
+    assert(database.insertTrackMeasurement(
+        targetTwoSecondMeasurement,
+        2,
+        std::chrono::system_clock::time_point{std::chrono::milliseconds{5'000LL}}
+    ));
+    assert(database.insertTrackMeasurement(
+        targetOneMiddleMeasurement,
+        1,
+        std::chrono::system_clock::time_point{std::chrono::milliseconds{2'000LL}}
+    ));
+
+    const auto statistics = database.trackStatistics();
+    assert(statistics.has_value());
+    assert(statistics->size() == 2);
+
+    assertTrackStatisticsEqual(
+        statistics->at(0),
+        TrackStatisticsExpectation {
+            .targetId = 1,
+            .pointCount = 3,
+            .firstTimestampMs = 1'000LL,
+            .lastTimestampMs = 3'000LL,
+            .minRangeM = 100.0,
+            .maxRangeM = 120.0,
+            .averageIntensity = 0.20,
+        }
+    );
+    assertTrackStatisticsEqual(
+        statistics->at(1),
+        TrackStatisticsExpectation {
+            .targetId = 2,
+            .pointCount = 2,
+            .firstTimestampMs = 4'000LL,
+            .lastTimestampMs = 5'000LL,
+            .minRangeM = 130.0,
+            .maxRangeM = 140.0,
+            .averageIntensity = 0.45,
+        }
+    );
 }
 
 void testClearMeasurementsEmptiesAnOpenDatabase()
@@ -808,6 +953,7 @@ void testInsertFailsWhenDatabaseIsNotOpen()
         }
     ));
     assert(!database.measurementCount().has_value());
+    assert(!database.trackStatistics().has_value());
 }
 
 } // namespace
@@ -816,6 +962,8 @@ int main()
 {
     testOpenMigratesLegacySchemaAndStoresTrackAwareRows();
     testOpenCreatesFreshDatabaseAndStoresTrackAwareRows();
+    testTrackStatisticsReturnsEmptyVectorForOpenEmptyDatabase();
+    testTrackStatisticsAggregatesRowsAndIgnoresNullTargetId();
     testClearMeasurementsEmptiesAnOpenDatabase();
     testExportMeasurementsWritesCsv();
     testExportMeasurementsWritesGeoJson();

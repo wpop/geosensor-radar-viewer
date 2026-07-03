@@ -41,6 +41,13 @@ constexpr int kTrackColumnLastRange = 2;
 constexpr int kTrackColumnLastAzimuth = 3;
 constexpr int kTrackColumnLastIntensity = 4;
 constexpr int kTrackColumnLastUpdateTime = 5;
+constexpr int kStoredTrackColumnTargetId = 0;
+constexpr int kStoredTrackColumnPoints = 1;
+constexpr int kStoredTrackColumnFirstTimestamp = 2;
+constexpr int kStoredTrackColumnLastTimestamp = 3;
+constexpr int kStoredTrackColumnMinRange = 4;
+constexpr int kStoredTrackColumnMaxRange = 5;
+constexpr int kStoredTrackColumnAverageIntensity = 6;
 
 } // namespace
 
@@ -92,6 +99,12 @@ void MainWindow::setupUi()
     );
     trackStatisticsLabel_ = new QLabel("Track statistics", leftPanel);
     trackStatisticsTable_ = new QTableWidget(leftPanel);
+    storedTrackStatisticsLabel_ = new QLabel("Stored Track Statistics", leftPanel);
+    refreshStoredStatisticsButton_ = new QPushButton(
+        "Refresh Stored Statistics",
+        leftPanel
+    );
+    storedTrackStatisticsTable_ = new QTableWidget(leftPanel);
 
     QFont sectionFont;
     sectionFont.setBold(true);
@@ -119,6 +132,30 @@ void MainWindow::setupUi()
     trackStatisticsTable_->horizontalHeader()->setMinimumSectionSize(40);
     trackStatisticsTable_->setColumnWidth(kTrackColumnLastUpdateTime, 110);
 
+    storedTrackStatisticsLabel_->setFont(sectionFont);
+
+    storedTrackStatisticsTable_->setColumnCount(7);
+    storedTrackStatisticsTable_->setHorizontalHeaderLabels(
+        {
+            "ID",
+            "Points",
+            "First",
+            "Last",
+            "Min Range",
+            "Max Range",
+            "Avg Intensity"
+        }
+    );
+    storedTrackStatisticsTable_->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    storedTrackStatisticsTable_->setSelectionMode(QAbstractItemView::NoSelection);
+    storedTrackStatisticsTable_->setFocusPolicy(Qt::NoFocus);
+    storedTrackStatisticsTable_->verticalHeader()->setVisible(false);
+    storedTrackStatisticsTable_->horizontalHeader()->setStretchLastSection(false);
+    storedTrackStatisticsTable_->horizontalHeader()->setSectionResizeMode(
+        QHeaderView::ResizeToContents
+    );
+    storedTrackStatisticsTable_->horizontalHeader()->setMinimumSectionSize(40);
+
     leftLayout->addWidget(titleLabel_, 1);
     leftLayout->addWidget(startUdpButton_);
     leftLayout->addWidget(stopUdpButton_);
@@ -129,6 +166,9 @@ void MainWindow::setupUi()
     leftLayout->addWidget(exportMeasurementsCsvButton);
     leftLayout->addWidget(trackStatisticsLabel_);
     leftLayout->addWidget(trackStatisticsTable_, 1);
+    leftLayout->addWidget(storedTrackStatisticsLabel_);
+    leftLayout->addWidget(refreshStoredStatisticsButton_);
+    leftLayout->addWidget(storedTrackStatisticsTable_, 1);
     leftLayout->setContentsMargins(0, 0, 0, 0);
 
     radarView_ = new RadarView(centralWidget);
@@ -142,13 +182,19 @@ void MainWindow::setupUi()
 
         if (measurementDatabase_.open(databasePath)) {
             databaseStatusText_ = "Enabled";
+            storageDatabaseOpen_ = true;
+            storedMeasurementCount_ = measurementDatabase_.measurementCount();
         } else {
             databaseStatusText_ = QString(
                 "Open failed: %1"
             ).arg(QString::fromStdString(databasePath.string()));
+            storageDatabaseOpen_ = false;
+            storedMeasurementCount_.reset();
         }
     } catch (const std::exception& error) {
         databaseStatusText_ = QString("Storage error: %1").arg(error.what());
+        storageDatabaseOpen_ = false;
+        storedMeasurementCount_.reset();
     }
 
     try {
@@ -233,6 +279,13 @@ void MainWindow::setupUi()
     );
 
     QObject::connect(
+        refreshStoredStatisticsButton_,
+        &QPushButton::clicked,
+        this,
+        [this]() { refreshStoredTrackStatistics(); }
+    );
+
+    QObject::connect(
         exportMeasurementsCsvButton,
         &QPushButton::clicked,
         this,
@@ -264,6 +317,7 @@ void MainWindow::setupUi()
 
     startUdpReceiver();
 
+    updateStoredTrackStatisticsTable();
     refreshDisplay();
 
     layout->addWidget(leftPanel, 1);
@@ -349,12 +403,10 @@ void MainWindow::refreshDisplay()
     }
 
     QString storedMeasurementText = "Stored measurements: unavailable\n";
-    const auto storedMeasurementCount = measurementDatabase_.measurementCount();
-
-    if (storedMeasurementCount.has_value()) {
+    if (storedMeasurementCount_.has_value()) {
         storedMeasurementText = QString(
             "Stored measurements: %1\n"
-        ).arg(static_cast<qlonglong>(*storedMeasurementCount));
+        ).arg(static_cast<qlonglong>(*storedMeasurementCount_));
     }
 
     const QString text = QString(
@@ -430,8 +482,12 @@ void MainWindow::appendLiveMeasurement(
         )
     ) {
         databaseStatusText_ = "Insert failed";
-    } else if (databaseStatusText_ != "Enabled") {
+    } else {
         databaseStatusText_ = "Enabled";
+
+        if (storedMeasurementCount_.has_value()) {
+            ++*storedMeasurementCount_;
+        }
     }
 
     if (liveMeasurements_.size() > kMaxLiveTargetCount) {
@@ -475,11 +531,18 @@ void MainWindow::clearStoredMeasurements()
 {
     if (!measurementDatabase_.clearMeasurements()) {
         databaseStatusText_ = "Clear failed";
-    } else if (databaseStatusText_ != "Enabled") {
+    } else {
         databaseStatusText_ = "Enabled";
+        storedMeasurementCount_ = 0;
+        updateStoredTrackStatisticsTable();
     }
 
     refreshDisplay();
+}
+
+void MainWindow::refreshStoredTrackStatistics()
+{
+    updateStoredTrackStatisticsTable();
 }
 
 void MainWindow::exportStoredMeasurementsToGeoJson()
@@ -543,9 +606,8 @@ void MainWindow::updateUdpControlStates()
     startUdpButton_->setEnabled(!isListening);
     stopUdpButton_->setEnabled(isListening);
     clearLiveTargetsButton_->setEnabled(!liveTargets_.empty());
-    clearStoredMeasurementsButton_->setEnabled(
-        measurementDatabase_.measurementCount().has_value()
-    );
+    clearStoredMeasurementsButton_->setEnabled(storageDatabaseOpen_);
+    refreshStoredStatisticsButton_->setEnabled(storageDatabaseOpen_);
 }
 
 void MainWindow::updateTrackStatisticsTable()
@@ -619,6 +681,73 @@ void MainWindow::updateTrackStatisticsTable()
     }
 
     trackStatisticsTable_->setSortingEnabled(true);
+}
+
+void MainWindow::updateStoredTrackStatisticsTable()
+{
+    if (storedTrackStatisticsTable_ == nullptr) {
+        return;
+    }
+
+    const auto statistics = measurementDatabase_.trackStatistics();
+
+    storedTrackStatisticsTable_->setSortingEnabled(false);
+    storedTrackStatisticsTable_->setRowCount(0);
+
+    if (!statistics.has_value()) {
+        storedTrackStatisticsTable_->setSortingEnabled(true);
+        return;
+    }
+
+    for (const auto& track : *statistics) {
+        const int rowIndex = storedTrackStatisticsTable_->rowCount();
+        storedTrackStatisticsTable_->insertRow(rowIndex);
+
+        const auto firstTimestampText = QDateTime::fromMSecsSinceEpoch(
+            static_cast<qint64>(track.firstTimestampMs)
+        ).toUTC().toString("HH:mm:ss 'UTC'");
+        const auto lastTimestampText = QDateTime::fromMSecsSinceEpoch(
+            static_cast<qint64>(track.lastTimestampMs)
+        ).toUTC().toString("HH:mm:ss 'UTC'");
+
+        storedTrackStatisticsTable_->setItem(
+            rowIndex,
+            kStoredTrackColumnTargetId,
+            new QTableWidgetItem(QString::number(track.targetId))
+        );
+        storedTrackStatisticsTable_->setItem(
+            rowIndex,
+            kStoredTrackColumnPoints,
+            new QTableWidgetItem(QString::number(track.pointCount))
+        );
+        storedTrackStatisticsTable_->setItem(
+            rowIndex,
+            kStoredTrackColumnFirstTimestamp,
+            new QTableWidgetItem(firstTimestampText)
+        );
+        storedTrackStatisticsTable_->setItem(
+            rowIndex,
+            kStoredTrackColumnLastTimestamp,
+            new QTableWidgetItem(lastTimestampText)
+        );
+        storedTrackStatisticsTable_->setItem(
+            rowIndex,
+            kStoredTrackColumnMinRange,
+            new QTableWidgetItem(QString::number(track.minRangeM, 'f', 1))
+        );
+        storedTrackStatisticsTable_->setItem(
+            rowIndex,
+            kStoredTrackColumnMaxRange,
+            new QTableWidgetItem(QString::number(track.maxRangeM, 'f', 1))
+        );
+        storedTrackStatisticsTable_->setItem(
+            rowIndex,
+            kStoredTrackColumnAverageIntensity,
+            new QTableWidgetItem(QString::number(track.averageIntensity, 'f', 2))
+        );
+    }
+
+    storedTrackStatisticsTable_->setSortingEnabled(true);
 }
 
 std::vector<std::vector<geosensor::data::EnuPosition>> MainWindow::buildTargetTrails(

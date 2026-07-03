@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <optional>
+#include <vector>
 
 struct sqlite3;
 
@@ -49,6 +50,21 @@ public:
 
     // Deletes all stored measurement rows.
     [[nodiscard]] bool clearMeasurements();
+
+    // Aggregates stored measurements by target identifier.
+    struct TrackStatistics
+    {
+        std::int64_t targetId {};
+        std::int64_t pointCount {};
+        std::int64_t firstTimestampMs {};
+        std::int64_t lastTimestampMs {};
+        double minRangeM {};
+        double maxRangeM {};
+        double averageIntensity {};
+    };
+
+    // Returns aggregated per-target statistics from SQLite.
+    [[nodiscard]] std::optional<std::vector<TrackStatistics>> trackStatistics() const;
 
     // Exports all stored measurement rows to a CSV file.
     [[nodiscard]] bool exportMeasurementsToCsv(
