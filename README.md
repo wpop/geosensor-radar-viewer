@@ -1,5 +1,7 @@
 # GeoSensor Radar Viewer
 
+[![CI](https://github.com/wpop/geosensor-radar-viewer/actions/workflows/ci.yml/badge.svg)](https://github.com/wpop/geosensor-radar-viewer/actions/workflows/ci.yml)
+
 GeoSensor Radar Viewer is a C++20 and Qt6 desktop application for visualizing georeferenced radar-like sensor measurements. It demonstrates a focused workflow for loading CSV data, transforming measurements into local ENU coordinates, and presenting the results in a radar-style view.
 
 ## Screenshot
