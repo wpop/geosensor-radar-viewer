@@ -7,14 +7,20 @@
 #include "geosensor/tracking/TrackStore.h"
 #include "geosensor/ui/RadarView.h"
 
+#include <QDateTime>
+#include <QHeaderView>
 #include <QHBoxLayout>
 #include <QVBoxLayout>
 #include <QFont>
+#include <QTableWidget>
+#include <QTableWidgetItem>
+#include <QTimeZone>
 #include <QObject>
 #include <QPushButton>
 #include <QString>
 #include <QWidget>
 
+#include <algorithm>
 #include <exception>
 #include <filesystem>
 #include <chrono>
@@ -29,6 +35,12 @@ namespace
 
 constexpr std::size_t kMaxLiveTargetCount = 100;
 constexpr std::size_t kMaxTrailPointCount = 20;
+constexpr int kTrackColumnTargetId = 0;
+constexpr int kTrackColumnPoints = 1;
+constexpr int kTrackColumnLastRange = 2;
+constexpr int kTrackColumnLastAzimuth = 3;
+constexpr int kTrackColumnLastIntensity = 4;
+constexpr int kTrackColumnLastUpdateTime = 5;
 
 } // namespace
 
@@ -62,11 +74,41 @@ void MainWindow::setupUi()
     startUdpButton_ = new QPushButton("Start UDP", leftPanel);
     stopUdpButton_ = new QPushButton("Stop UDP", leftPanel);
     clearLiveTargetsButton_ = new QPushButton("Clear Live Targets", leftPanel);
+    trackStatisticsLabel_ = new QLabel("Track statistics", leftPanel);
+    trackStatisticsTable_ = new QTableWidget(leftPanel);
+
+    QFont sectionFont;
+    sectionFont.setBold(true);
+    trackStatisticsLabel_->setFont(sectionFont);
+
+    trackStatisticsTable_->setColumnCount(6);
+    trackStatisticsTable_->setHorizontalHeaderLabels(
+        {
+            "ID",
+            "Points",
+            "Range, m",
+            "Azimuth, deg",
+            "Intensity",
+            "Updated"
+        }
+    );
+    trackStatisticsTable_->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    trackStatisticsTable_->setSelectionMode(QAbstractItemView::NoSelection);
+    trackStatisticsTable_->setFocusPolicy(Qt::NoFocus);
+    trackStatisticsTable_->verticalHeader()->setVisible(false);
+    trackStatisticsTable_->horizontalHeader()->setStretchLastSection(false);
+    trackStatisticsTable_->horizontalHeader()->setSectionResizeMode(
+        QHeaderView::ResizeToContents
+    );
+    trackStatisticsTable_->horizontalHeader()->setMinimumSectionSize(40);
+    trackStatisticsTable_->setColumnWidth(kTrackColumnLastUpdateTime, 110);
 
     leftLayout->addWidget(titleLabel_, 1);
     leftLayout->addWidget(startUdpButton_);
     leftLayout->addWidget(stopUdpButton_);
     leftLayout->addWidget(clearLiveTargetsButton_);
+    leftLayout->addWidget(trackStatisticsLabel_);
+    leftLayout->addWidget(trackStatisticsTable_, 1);
     leftLayout->setContentsMargins(0, 0, 0, 0);
 
     radarView_ = new RadarView(centralWidget);
@@ -164,6 +206,7 @@ void MainWindow::refreshDisplay()
     radarView_->setSampleTargets(csvTargets_);
     radarView_->setLiveTargets(liveTargets_);
     radarView_->setTargetTrails(buildTargetTrails());
+    updateTrackStatisticsTable();
     updateUdpControlStates();
 
     QString measurementRows;
@@ -364,6 +407,80 @@ void MainWindow::updateUdpControlStates()
     startUdpButton_->setEnabled(!isListening);
     stopUdpButton_->setEnabled(isListening);
     clearLiveTargetsButton_->setEnabled(!liveTargets_.empty());
+}
+
+void MainWindow::updateTrackStatisticsTable()
+{
+    if (trackStatisticsTable_ == nullptr) {
+        return;
+    }
+
+    const auto trackIds = trackStore_.trackIds();
+    std::vector<geosensor::tracking::TrackId> sortedTrackIds = trackIds;
+    std::sort(sortedTrackIds.begin(), sortedTrackIds.end());
+
+    trackStatisticsTable_->setSortingEnabled(false);
+    trackStatisticsTable_->setRowCount(0);
+
+    for (const auto trackId : sortedTrackIds) {
+        const auto* points = trackStore_.pointsForTrack(trackId);
+        if (points == nullptr || points->empty()) {
+            continue;
+        }
+
+        const auto& lastPoint = points->back();
+        const int rowIndex = trackStatisticsTable_->rowCount();
+        trackStatisticsTable_->insertRow(rowIndex);
+
+        const auto timestampMs =
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                lastPoint.timestamp.time_since_epoch()
+            ).count();
+
+        const QString timestampText = QDateTime::fromMSecsSinceEpoch(
+            static_cast<qint64>(timestampMs),
+            QTimeZone::UTC
+        ).toString("HH:mm:ss 'UTC'");
+
+        trackStatisticsTable_->setItem(
+            rowIndex,
+            kTrackColumnTargetId,
+            new QTableWidgetItem(QString::number(trackId))
+        );
+        trackStatisticsTable_->setItem(
+            rowIndex,
+            kTrackColumnPoints,
+            new QTableWidgetItem(QString::number(points->size()))
+        );
+        trackStatisticsTable_->setItem(
+            rowIndex,
+            kTrackColumnLastRange,
+            new QTableWidgetItem(
+                QString::number(lastPoint.measurement.rangeM, 'f', 1)
+            )
+        );
+        trackStatisticsTable_->setItem(
+            rowIndex,
+            kTrackColumnLastAzimuth,
+            new QTableWidgetItem(
+                QString::number(lastPoint.measurement.azimuthDeg, 'f', 1)
+            )
+        );
+        trackStatisticsTable_->setItem(
+            rowIndex,
+            kTrackColumnLastIntensity,
+            new QTableWidgetItem(
+                QString::number(lastPoint.measurement.intensity, 'f', 2)
+            )
+        );
+        trackStatisticsTable_->setItem(
+            rowIndex,
+            kTrackColumnLastUpdateTime,
+            new QTableWidgetItem(timestampText)
+        );
+    }
+
+    trackStatisticsTable_->setSortingEnabled(true);
 }
 
 std::vector<std::vector<geosensor::data::EnuPosition>> MainWindow::buildTargetTrails(

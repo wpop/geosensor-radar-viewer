@@ -13,6 +13,7 @@
 #include <vector>
 
 class QPushButton;
+class QTableWidget;
 
 namespace geosensor::networking
 {
@@ -44,10 +45,13 @@ private:
     void stopUdpReceiver();
     void clearLiveTargets();
     void updateUdpControlStates();
+    void updateTrackStatisticsTable();
     [[nodiscard]] std::vector<std::vector<geosensor::data::EnuPosition>>
     buildTargetTrails() const;
 
     QLabel* titleLabel_ {};
+    QLabel* trackStatisticsLabel_ {};
+    QTableWidget* trackStatisticsTable_ {};
     RadarView* radarView_ {};
     QPushButton* startUdpButton_ {};
     QPushButton* stopUdpButton_ {};
