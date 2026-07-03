@@ -93,6 +93,17 @@ In the radar view, CSV/sample targets remain visible and are styled separately f
 
 Valid live UDP measurements are stored automatically in `data/geosensor_live_measurements.sqlite` when the application runs. The UI also shows storage status and the current stored measurement count.
 
+The `measurements` table stores:
+
+- `target_id` as a nullable track identifier
+- `timestamp_ms` in Unix milliseconds
+- `range_m`
+- `azimuth_deg`
+- `elevation_deg`
+- `intensity`
+
+Packets with `target_id` are stored with that value. Legacy 4-field packets are stored with `NULL` `target_id`, which also applies to older rows created before track-aware storage was added. Existing SQLite databases are migrated in place by adding any missing columns.
+
 The database file is a runtime artifact and should not be committed. The repository ignores `data/*.sqlite`.
 
 `Clear Live Targets` clears only the live display buffer. It does not delete rows already stored in SQLite.
@@ -101,6 +112,12 @@ To inspect the current stored row count:
 
 ```bash
 sqlite3 data/geosensor_live_measurements.sqlite "SELECT COUNT(*) FROM measurements;"
+```
+
+To see how many stored rows belong to each target identity, including legacy `NULL` rows:
+
+```bash
+sqlite3 data/geosensor_live_measurements.sqlite "SELECT COALESCE(CAST(target_id AS TEXT), 'NULL') AS target_id, COUNT(*) AS row_count FROM measurements GROUP BY target_id ORDER BY target_id;"
 ```
 
 ## UDP Sensor Simulator
