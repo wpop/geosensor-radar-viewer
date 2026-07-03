@@ -17,11 +17,13 @@ find_package(SQLite3 REQUIRED)
 
 add_library(geosensor_core STATIC
     include/geosensor/networking/UdpMeasurementReceiver.h
+    include/geosensor/tracking/TrackStore.h
     src/coordinates/CoordinateTransform.cpp
     src/io/CsvMeasurementLoader.cpp
     src/io/UdpMeasurementParser.cpp
     src/networking/UdpMeasurementReceiver.cpp
     src/storage/MeasurementDatabase.cpp
+    src/tracking/TrackStore.cpp
 )
 
 target_include_directories(geosensor_core
@@ -152,4 +154,25 @@ target_compile_options(geosensor_storage_tests
 add_test(
     NAME geosensor_storage_tests
     COMMAND geosensor_storage_tests
+)
+
+add_executable(geosensor_tracking_tests
+    tests/tracking/track_store_tests.cpp
+)
+
+target_link_libraries(geosensor_tracking_tests
+    PRIVATE
+        geosensor_core
+)
+
+target_compile_options(geosensor_tracking_tests
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+)
+
+add_test(
+    NAME geosensor_tracking_tests
+    COMMAND geosensor_tracking_tests
 )
