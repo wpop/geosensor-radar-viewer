@@ -46,12 +46,30 @@ bool parseDouble(std::string_view field, double& value)
     return parsedLength == trimmedField.size();
 }
 
+bool parseInteger(std::string_view field, int& value)
+{
+    const std::string trimmedField(trim(field));
+    if (trimmedField.empty()) {
+        return false;
+    }
+
+    std::size_t parsedLength = 0;
+
+    try {
+        value = std::stoi(trimmedField, &parsedLength);
+    } catch (...) {
+        return false;
+    }
+
+    return parsedLength == trimmedField.size();
+}
+
 } // namespace
 
 namespace geosensor::io
 {
 
-std::optional<data::SensorMeasurement> UdpMeasurementParser::parse(
+std::optional<UdpMeasurementPacket> UdpMeasurementParser::parsePacket(
     std::string_view payload
 )
 {
@@ -59,7 +77,7 @@ std::optional<data::SensorMeasurement> UdpMeasurementParser::parse(
         return std::nullopt;
     }
 
-    std::array<std::string_view, 4> fields;
+    std::array<std::string_view, 5> fields;
     std::size_t fieldIndex = 0;
     std::size_t fieldStart = 0;
 
@@ -77,26 +95,58 @@ std::optional<data::SensorMeasurement> UdpMeasurementParser::parse(
         fieldStart = i + 1;
     }
 
-    if (fieldIndex != fields.size()) {
+    if (fieldIndex != 4 && fieldIndex != 5) {
         return std::nullopt;
     }
 
-    data::SensorMeasurement measurement;
+    UdpMeasurementPacket packet;
+    std::size_t measurementFieldOffset = 0;
 
-    if (!parseDouble(fields[0], measurement.rangeM)) {
-        return std::nullopt;
-    }
-    if (!parseDouble(fields[1], measurement.azimuthDeg)) {
-        return std::nullopt;
-    }
-    if (!parseDouble(fields[2], measurement.elevationDeg)) {
-        return std::nullopt;
-    }
-    if (!parseDouble(fields[3], measurement.intensity)) {
-        return std::nullopt;
+    if (fieldIndex == 5) {
+        int targetId = 0;
+        if (!parseInteger(fields[0], targetId)) {
+            return std::nullopt;
+        }
+
+        packet.targetId = targetId;
+        measurementFieldOffset = 1;
     }
 
-    return measurement;
+    if (!parseDouble(fields[measurementFieldOffset], packet.measurement.rangeM)) {
+        return std::nullopt;
+    }
+    if (!parseDouble(
+            fields[measurementFieldOffset + 1],
+            packet.measurement.azimuthDeg
+        )) {
+        return std::nullopt;
+    }
+    if (!parseDouble(
+            fields[measurementFieldOffset + 2],
+            packet.measurement.elevationDeg
+        )) {
+        return std::nullopt;
+    }
+    if (!parseDouble(
+            fields[measurementFieldOffset + 3],
+            packet.measurement.intensity
+        )) {
+        return std::nullopt;
+    }
+
+    return packet;
+}
+
+std::optional<data::SensorMeasurement> UdpMeasurementParser::parse(
+    std::string_view payload
+)
+{
+    const auto packet = parsePacket(payload);
+    if (!packet.has_value()) {
+        return std::nullopt;
+    }
+
+    return packet->measurement;
 }
 
 } // namespace geosensor::io

@@ -85,7 +85,7 @@ Run the multi-target UDP simulator in Terminal 2:
 ./scripts/simulator/udp_sensor_simulator.py --mode multi --interval 0.2 --azimuth-step 5
 ```
 
-In the radar view, CSV/sample targets remain visible and are styled separately from live UDP targets. `Start UDP` starts or resumes receiving live packets, `Stop UDP` pauses live receiving, and `Clear Live Targets` removes only the live UDP targets while keeping the CSV/sample targets on screen. Live targets are limited to the latest 100 positions, and the `Total valid UDP packets` status line continues increasing even after the live target buffer reaches 100. In moving mode, azimuth changes gradually so the red live target moves around the radar. Multi mode sends several moving detections per update cycle, but it does not assign target IDs yet.
+In the radar view, CSV/sample targets remain visible and are styled separately from live UDP targets. `Start UDP` starts or resumes receiving live packets, `Stop UDP` pauses live receiving, and `Clear Live Targets` removes only the live UDP targets while keeping the CSV/sample targets on screen. Live targets are limited to the latest 100 positions, and the `Total valid UDP packets` status line continues increasing even after the live target buffer reaches 100. In moving mode, azimuth changes gradually so the red live target moves around the radar. Multi mode sends several moving detections per update cycle and now includes `target_id` values in the UDP payload, although the viewer does not use target IDs yet.
 
 ## SQLite Storage
 
@@ -103,11 +103,16 @@ sqlite3 data/geosensor_live_measurements.sqlite "SELECT COUNT(*) FROM measuremen
 
 ## UDP Sensor Simulator
 
-The repository includes a small Python UDP simulator that sends one radar-style measurement per packet as CSV text:
+The repository includes a small Python UDP simulator that sends one radar-style measurement per packet as CSV text.
+
+Supported UDP payload formats:
 
 ```text
 1200.0,45.0,3.0,0.82
+7,1200.0,45.0,3.0,0.82
 ```
+
+The 4-field format is kept for backward compatibility. The 5-field format adds `target_id` as the first field.
 
 Run it with the default destination `127.0.0.1:5005` and a `1.0` second interval:
 
@@ -133,13 +138,15 @@ Run a multi-target mode with several moving detections:
 ./scripts/simulator/udp_sensor_simulator.py --mode multi --azimuth-step 5.0
 ```
 
+In multi-target mode, the simulator sends one UDP packet per target for each update cycle. These packets include `target_id`, but the current viewer still renders detections without track identity.
+
 Optional arguments:
 
 - `--host` to change the destination host
 - `--port` to change the destination UDP port
 - `--interval` to change the delay between packets in seconds
 - `--mode` to choose `static`, `moving`, or `multi`
-- `--azimuth-step` to control azimuth change per packet in moving mode
+- `--azimuth-step` to control azimuth change per packet in moving and multi modes
 
 ## Test Instructions
 
