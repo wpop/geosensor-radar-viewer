@@ -35,7 +35,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--mode",
-        choices=("static", "moving"),
+        choices=("static", "moving", "multi"),
         default="static",
         help="Measurement mode. Default: static",
     )
@@ -74,6 +74,51 @@ def moving_measurement_stream(
         azimuth_deg = (azimuth_deg + azimuth_step) % 360.0
 
 
+def multi_measurement_cycle_stream(
+    azimuth_step: float,
+) -> Iterator[tuple[tuple[float, float, float, float], ...]]:
+    """Yield several moving targets for each update cycle."""
+    targets = [
+        {
+            "range_m": 700.0,
+            "azimuth_deg": 20.0,
+            "azimuth_step": azimuth_step,
+            "elevation_deg": 1.5,
+            "intensity": 0.82,
+        },
+        {
+            "range_m": 1050.0,
+            "azimuth_deg": 180.0,
+            "azimuth_step": azimuth_step * 0.6,
+            "elevation_deg": 2.5,
+            "intensity": 0.88,
+        },
+        {
+            "range_m": 1350.0,
+            "azimuth_deg": 300.0,
+            "azimuth_step": -azimuth_step * 0.8,
+            "elevation_deg": 1.0,
+            "intensity": 0.79,
+        },
+    ]
+
+    while True:
+        yield tuple(
+            (
+                target["range_m"],
+                target["azimuth_deg"],
+                target["elevation_deg"],
+                target["intensity"],
+            )
+            for target in targets
+        )
+
+        for target in targets:
+            target["azimuth_deg"] = (
+                target["azimuth_deg"] + target["azimuth_step"]
+            ) % 360.0
+
+
 def format_measurement(
     measurement: tuple[float, float, float, float]
 ) -> str:
@@ -93,9 +138,17 @@ def main() -> int:
     # UDP is connectionless, so we simply send one CSV measurement per packet.
     destination = (args.host, args.port)
     if args.mode == "moving":
-        measurements = moving_measurement_stream(args.azimuth_step)
+        measurement_cycles = (
+            (measurement,)
+            for measurement in moving_measurement_stream(args.azimuth_step)
+        )
+    elif args.mode == "multi":
+        measurement_cycles = multi_measurement_cycle_stream(args.azimuth_step)
     else:
-        measurements = static_measurement_stream()
+        measurement_cycles = (
+            (measurement,)
+            for measurement in static_measurement_stream()
+        )
 
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp_socket:
         print(
@@ -105,10 +158,11 @@ def main() -> int:
         )
 
         try:
-            for measurement in measurements:
-                payload = format_measurement(measurement)
-                udp_socket.sendto(payload.encode("utf-8"), destination)
-                print(payload)
+            for measurements in measurement_cycles:
+                for measurement in measurements:
+                    payload = format_measurement(measurement)
+                    udp_socket.sendto(payload.encode("utf-8"), destination)
+                    print(payload)
                 time.sleep(args.interval)
         except KeyboardInterrupt:
             print("\nStopped.")

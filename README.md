@@ -13,7 +13,7 @@ GeoSensor Radar Viewer is a C++20 and Qt6 desktop application for visualizing ge
 - Qt6 Widgets desktop interface
 - CSV loading for radar-style sensor measurements
 - Live UDP measurement receiver on `127.0.0.1:5005`
-- Python UDP simulator with static and moving target modes
+- Python UDP simulator with static, moving, and multi-target modes
 - Live UDP controls for start, stop, and clear
 - Range / azimuth / elevation to local ENU coordinate transformation
 - Approximate ENU to WGS84 latitude / longitude conversion
@@ -79,7 +79,13 @@ Run the moving UDP simulator in Terminal 2:
 ./scripts/simulator/udp_sensor_simulator.py --mode moving --interval 0.2 --azimuth-step 5
 ```
 
-In the radar view, CSV/sample targets remain visible and are styled separately from live UDP targets. `Start UDP` starts or resumes receiving live packets, `Stop UDP` pauses live receiving, and `Clear Live Targets` removes only the live UDP targets while keeping the CSV/sample targets on screen. Live targets are limited to the latest 100 positions, and the `Total valid UDP packets` status line continues increasing even after the live target buffer reaches 100. In moving mode, azimuth changes gradually so the red live target moves around the radar.
+Run the multi-target UDP simulator in Terminal 2:
+
+```bash
+./scripts/simulator/udp_sensor_simulator.py --mode multi --interval 0.2 --azimuth-step 5
+```
+
+In the radar view, CSV/sample targets remain visible and are styled separately from live UDP targets. `Start UDP` starts or resumes receiving live packets, `Stop UDP` pauses live receiving, and `Clear Live Targets` removes only the live UDP targets while keeping the CSV/sample targets on screen. Live targets are limited to the latest 100 positions, and the `Total valid UDP packets` status line continues increasing even after the live target buffer reaches 100. In moving mode, azimuth changes gradually so the red live target moves around the radar. Multi mode sends several moving detections per update cycle, but it does not assign target IDs yet.
 
 ## SQLite Storage
 
@@ -121,12 +127,18 @@ Run a moving-target mode with gradually changing azimuth:
 ./scripts/simulator/udp_sensor_simulator.py --mode moving --azimuth-step 5.0
 ```
 
+Run a multi-target mode with several moving detections:
+
+```bash
+./scripts/simulator/udp_sensor_simulator.py --mode multi --azimuth-step 5.0
+```
+
 Optional arguments:
 
 - `--host` to change the destination host
 - `--port` to change the destination UDP port
 - `--interval` to change the delay between packets in seconds
-- `--mode` to choose `static` or `moving`
+- `--mode` to choose `static`, `moving`, or `multi`
 - `--azimuth-step` to control azimuth change per packet in moving mode
 
 ## Test Instructions
