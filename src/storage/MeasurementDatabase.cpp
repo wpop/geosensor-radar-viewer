@@ -46,6 +46,20 @@ constexpr const char* kMeasurementCountSql =
 constexpr const char* kClearMeasurementsSql =
     "DELETE FROM measurements;";
 
+constexpr const char* kTrackStatisticsSql =
+    "SELECT "
+    "target_id, "
+    "COUNT(*), "
+    "MIN(timestamp_ms), "
+    "MAX(timestamp_ms), "
+    "MIN(range_m), "
+    "MAX(range_m), "
+    "AVG(intensity) "
+    "FROM measurements "
+    "WHERE target_id IS NOT NULL "
+    "GROUP BY target_id "
+    "ORDER BY target_id;";
+
 constexpr const char* kExportMeasurementsSql =
     "SELECT target_id, timestamp_ms, range_m, azimuth_deg, elevation_deg, intensity "
     "FROM measurements ORDER BY id;";
@@ -720,6 +734,51 @@ bool MeasurementDatabase::clearMeasurements()
         nullptr,
         nullptr
     ) == SQLITE_OK;
+}
+
+std::optional<std::vector<MeasurementDatabase::TrackStatistics>>
+MeasurementDatabase::trackStatistics() const
+{
+    if (database_ == nullptr) {
+        return std::nullopt;
+    }
+
+    sqlite3_stmt* statement = nullptr;
+
+    if (
+        sqlite3_prepare_v2(
+            database_,
+            kTrackStatisticsSql,
+            -1,
+            &statement,
+            nullptr
+        ) != SQLITE_OK
+    ) {
+        return std::nullopt;
+    }
+
+    std::vector<TrackStatistics> statistics;
+    int stepResult = SQLITE_ROW;
+
+    while ((stepResult = sqlite3_step(statement)) == SQLITE_ROW) {
+        statistics.push_back(TrackStatistics {
+            .targetId = sqlite3_column_int64(statement, 0),
+            .pointCount = sqlite3_column_int64(statement, 1),
+            .firstTimestampMs = sqlite3_column_int64(statement, 2),
+            .lastTimestampMs = sqlite3_column_int64(statement, 3),
+            .minRangeM = sqlite3_column_double(statement, 4),
+            .maxRangeM = sqlite3_column_double(statement, 5),
+            .averageIntensity = sqlite3_column_double(statement, 6),
+        });
+    }
+
+    sqlite3_finalize(statement);
+
+    if (stepResult != SQLITE_DONE) {
+        return std::nullopt;
+    }
+
+    return statistics;
 }
 
 bool MeasurementDatabase::exportMeasurementsToCsv(

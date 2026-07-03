@@ -45,16 +45,21 @@ private:
     void stopUdpReceiver();
     void clearLiveTargets();
     void clearStoredMeasurements();
+    void refreshStoredTrackStatistics();
     void exportStoredMeasurementsToGeoJson();
     void exportTrackedMeasurementsToGeoJson();
     void updateUdpControlStates();
     void updateTrackStatisticsTable();
+    void updateStoredTrackStatisticsTable();
     [[nodiscard]] std::vector<std::vector<geosensor::data::EnuPosition>>
     buildTargetTrails() const;
 
     QLabel* titleLabel_ {};
     QLabel* trackStatisticsLabel_ {};
     QTableWidget* trackStatisticsTable_ {};
+    QLabel* storedTrackStatisticsLabel_ {};
+    QPushButton* refreshStoredStatisticsButton_ {};
+    QTableWidget* storedTrackStatisticsTable_ {};
     RadarView* radarView_ {};
     QPushButton* startUdpButton_ {};
     QPushButton* stopUdpButton_ {};
@@ -78,8 +83,10 @@ private:
     QString csvPathText_ {};
     QString udpStatusText_ {"Not started."};
     QString databaseStatusText_ {"Disabled"};
+    std::optional<std::int64_t> storedMeasurementCount_ {};
     QString lastInvalidPayload_ {};
     std::size_t totalValidUdpPackets_ {};
+    bool storageDatabaseOpen_ {};
 };
 
 } // namespace geosensor::ui
