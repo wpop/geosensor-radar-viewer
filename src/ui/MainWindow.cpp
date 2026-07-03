@@ -8,6 +8,7 @@
 #include "geosensor/ui/RadarView.h"
 
 #include <QDateTime>
+#include <QComboBox>
 #include <QHeaderView>
 #include <QFileDialog>
 #include <QHBoxLayout>
@@ -17,6 +18,7 @@
 #include <QTableWidgetItem>
 #include <QObject>
 #include <QPushButton>
+#include <QSpinBox>
 #include <QString>
 #include <QWidget>
 
@@ -24,6 +26,7 @@
 #include <exception>
 #include <filesystem>
 #include <chrono>
+#include <limits>
 #include <optional>
 #include <vector>
 
@@ -85,6 +88,21 @@ void MainWindow::setupUi()
         "Clear Stored Measurements",
         leftPanel
     );
+    measurementExportFilterLabel_ = new QLabel(
+        "Measurement Export Filter",
+        leftPanel
+    );
+    measurementExportFilterComboBox_ = new QComboBox(leftPanel);
+    measurementExportFilterComboBox_->addItems(
+        {
+            "All measurements",
+            "Tracked only",
+            "Target ID"
+        }
+    );
+    measurementExportTargetIdSpinBox_ = new QSpinBox(leftPanel);
+    measurementExportTargetIdSpinBox_->setRange(0, std::numeric_limits<int>::max());
+    measurementExportTargetIdSpinBox_->setEnabled(false);
     exportMeasurementsGeoJsonButton_ = new QPushButton(
         "Export Measurements GeoJSON",
         leftPanel
@@ -161,6 +179,11 @@ void MainWindow::setupUi()
     leftLayout->addWidget(stopUdpButton_);
     leftLayout->addWidget(clearLiveTargetsButton_);
     leftLayout->addWidget(clearStoredMeasurementsButton_);
+    leftLayout->addWidget(measurementExportFilterLabel_);
+    auto* measurementExportFilterLayout = new QHBoxLayout();
+    measurementExportFilterLayout->addWidget(measurementExportFilterComboBox_);
+    measurementExportFilterLayout->addWidget(measurementExportTargetIdSpinBox_);
+    leftLayout->addLayout(measurementExportFilterLayout);
     leftLayout->addWidget(exportMeasurementsGeoJsonButton_);
     leftLayout->addWidget(exportTracksGeoJsonButton_);
     leftLayout->addWidget(exportMeasurementsCsvButton);
@@ -265,6 +288,13 @@ void MainWindow::setupUi()
     );
 
     QObject::connect(
+        measurementExportFilterComboBox_,
+        QOverload<int>::of(&QComboBox::currentIndexChanged),
+        this,
+        [this]() { updateMeasurementExportFilterControls(); }
+    );
+
+    QObject::connect(
         exportMeasurementsGeoJsonButton_,
         &QPushButton::clicked,
         this,
@@ -289,34 +319,12 @@ void MainWindow::setupUi()
         exportMeasurementsCsvButton,
         &QPushButton::clicked,
         this,
-        [this]() {
-            const QString filePath = QFileDialog::getSaveFileName(
-                this,
-                "Export Measurements CSV",
-                "data/geosensor_measurements.csv",
-                "CSV Files (*.csv);;All Files (*)"
-            );
-
-            if (filePath.isEmpty()) {
-                return;
-            }
-
-            if (
-                measurementDatabase_.exportMeasurementsToCsv(
-                    std::filesystem::path(filePath.toStdString())
-                )
-            ) {
-                databaseStatusText_ = QString("Exported CSV: %1").arg(filePath);
-            } else {
-                databaseStatusText_ = "Export CSV failed";
-            }
-
-            refreshDisplay();
-        }
+        [this]() { exportStoredMeasurementsToCsv(); }
     );
 
     startUdpReceiver();
 
+    updateMeasurementExportFilterControls();
     updateStoredTrackStatisticsTable();
     refreshDisplay();
 
@@ -540,6 +548,35 @@ void MainWindow::clearStoredMeasurements()
     refreshDisplay();
 }
 
+void MainWindow::exportStoredMeasurementsToCsv()
+{
+    const QString filePath = QFileDialog::getSaveFileName(
+        this,
+        "Export Measurements CSV",
+        "data/geosensor_measurements.csv",
+        "CSV Files (*.csv);;All Files (*)"
+    );
+
+    if (filePath.isEmpty()) {
+        return;
+    }
+
+    const auto filter = currentMeasurementExportFilter();
+
+    if (
+        measurementDatabase_.exportMeasurementsToCsv(
+            std::filesystem::path(filePath.toStdString()),
+            filter
+        )
+    ) {
+        databaseStatusText_ = QString("Exported CSV: %1").arg(filePath);
+    } else {
+        databaseStatusText_ = "Export CSV failed";
+    }
+
+    refreshDisplay();
+}
+
 void MainWindow::refreshStoredTrackStatistics()
 {
     updateStoredTrackStatisticsTable();
@@ -558,10 +595,13 @@ void MainWindow::exportStoredMeasurementsToGeoJson()
         return;
     }
 
+    const auto filter = currentMeasurementExportFilter();
+
     if (
         measurementDatabase_.exportMeasurementsToGeoJson(
             std::filesystem::path(filePath.toStdString()),
-            sensorOrigin_
+            sensorOrigin_,
+            filter
         )
     ) {
         databaseStatusText_ = QString("Exported GeoJSON: %1").arg(filePath);
@@ -570,6 +610,47 @@ void MainWindow::exportStoredMeasurementsToGeoJson()
     }
 
     refreshDisplay();
+}
+
+void MainWindow::updateMeasurementExportFilterControls()
+{
+    if (
+        measurementExportFilterComboBox_ == nullptr ||
+        measurementExportTargetIdSpinBox_ == nullptr
+    ) {
+        return;
+    }
+
+    const bool targetIdMode =
+        measurementExportFilterComboBox_->currentIndex() == 2;
+    measurementExportTargetIdSpinBox_->setEnabled(targetIdMode);
+}
+
+geosensor::storage::MeasurementExportFilter
+MainWindow::currentMeasurementExportFilter() const
+{
+    geosensor::storage::MeasurementExportFilter filter;
+
+    if (measurementExportFilterComboBox_ == nullptr) {
+        return filter;
+    }
+
+    switch (measurementExportFilterComboBox_->currentIndex()) {
+    case 1:
+        filter.mode = geosensor::storage::MeasurementExportMode::TrackedOnly;
+        break;
+    case 2:
+        filter.mode = geosensor::storage::MeasurementExportMode::TargetId;
+        if (measurementExportTargetIdSpinBox_ != nullptr) {
+            filter.targetId = measurementExportTargetIdSpinBox_->value();
+        }
+        break;
+    default:
+        filter.mode = geosensor::storage::MeasurementExportMode::All;
+        break;
+    }
+
+    return filter;
 }
 
 void MainWindow::exportTrackedMeasurementsToGeoJson()

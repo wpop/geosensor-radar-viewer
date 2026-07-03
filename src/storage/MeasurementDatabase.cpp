@@ -60,9 +60,21 @@ constexpr const char* kTrackStatisticsSql =
     "GROUP BY target_id "
     "ORDER BY target_id;";
 
-constexpr const char* kExportMeasurementsSql =
+constexpr const char* kExportMeasurementsAllSql =
     "SELECT target_id, timestamp_ms, range_m, azimuth_deg, elevation_deg, intensity "
     "FROM measurements ORDER BY id;";
+
+constexpr const char* kExportMeasurementsTrackedOnlySql =
+    "SELECT target_id, timestamp_ms, range_m, azimuth_deg, elevation_deg, intensity "
+    "FROM measurements "
+    "WHERE target_id IS NOT NULL "
+    "ORDER BY id;";
+
+constexpr const char* kExportMeasurementsTargetIdSql =
+    "SELECT target_id, timestamp_ms, range_m, azimuth_deg, elevation_deg, intensity "
+    "FROM measurements "
+    "WHERE target_id = ? "
+    "ORDER BY id;";
 
 #ifdef GEOSENSOR_HAVE_GDAL
 constexpr const char* kExportTracksSql =
@@ -71,6 +83,61 @@ constexpr const char* kExportTracksSql =
     "WHERE target_id IS NOT NULL "
     "ORDER BY target_id, timestamp_ms, id;";
 #endif
+
+struct MeasurementExportQuery
+{
+    const char* sql {};
+    bool bindTargetId {};
+};
+
+MeasurementExportQuery measurementExportQuery(
+    const geosensor::storage::MeasurementExportFilter& filter
+)
+{
+    using geosensor::storage::MeasurementExportMode;
+
+    switch (filter.mode) {
+    case MeasurementExportMode::All:
+        return {kExportMeasurementsAllSql, false};
+    case MeasurementExportMode::TrackedOnly:
+        return {kExportMeasurementsTrackedOnlySql, false};
+    case MeasurementExportMode::TargetId:
+        return {kExportMeasurementsTargetIdSql, true};
+    }
+
+    return {kExportMeasurementsAllSql, false};
+}
+
+bool prepareMeasurementExportStatement(
+    sqlite3* database,
+    const geosensor::storage::MeasurementExportFilter& filter,
+    sqlite3_stmt** statement
+)
+{
+    const MeasurementExportQuery query = measurementExportQuery(filter);
+
+    if (
+        sqlite3_prepare_v2(
+            database,
+            query.sql,
+            -1,
+            statement,
+            nullptr
+        ) != SQLITE_OK
+    ) {
+        return false;
+    }
+
+    if (query.bindTargetId) {
+        if (sqlite3_bind_int64(*statement, 1, filter.targetId) != SQLITE_OK) {
+            sqlite3_finalize(*statement);
+            *statement = nullptr;
+            return false;
+        }
+    }
+
+    return true;
+}
 
 constexpr const char* kTargetIdColumnName = "target_id";
 constexpr const char* kTimestampColumnName = "timestamp_ms";
@@ -234,7 +301,8 @@ bool addGdalField(
 bool exportMeasurementsToGeoJsonWithGdal(
     sqlite3* database,
     const std::filesystem::path& geoJsonPath,
-    const geosensor::data::SensorOrigin& sensorOrigin
+    const geosensor::data::SensorOrigin& sensorOrigin,
+    const geosensor::storage::MeasurementExportFilter& filter
 )
 {
     std::error_code errorCode;
@@ -299,15 +367,24 @@ bool exportMeasurementsToGeoJsonWithGdal(
 
     const geosensor::coordinates::CoordinateTransform transform(sensorOrigin);
 
+    const MeasurementExportQuery query = measurementExportQuery(filter);
+
     if (
         sqlite3_prepare_v2(
             database,
-            kExportMeasurementsSql,
+            query.sql,
             -1,
             &statement,
             nullptr
         ) != SQLITE_OK
     ) {
+        OSRDestroySpatialReference(spatialReference);
+        OGR_DS_Destroy(dataSource);
+        return false;
+    }
+
+    if (query.bindTargetId && sqlite3_bind_int64(statement, 1, filter.targetId) != SQLITE_OK) {
+        sqlite3_finalize(statement);
         OSRDestroySpatialReference(spatialReference);
         OGR_DS_Destroy(dataSource);
         return false;
@@ -782,7 +859,8 @@ MeasurementDatabase::trackStatistics() const
 }
 
 bool MeasurementDatabase::exportMeasurementsToCsv(
-    const std::filesystem::path& csvPath
+    const std::filesystem::path& csvPath,
+    const MeasurementExportFilter& filter
 )
 {
     if (database_ == nullptr) {
@@ -804,15 +882,7 @@ bool MeasurementDatabase::exportMeasurementsToCsv(
 
     sqlite3_stmt* statement = nullptr;
 
-    if (
-        sqlite3_prepare_v2(
-            database_,
-            kExportMeasurementsSql,
-            -1,
-            &statement,
-            nullptr
-        ) != SQLITE_OK
-    ) {
+    if (!prepareMeasurementExportStatement(database_, filter, &statement)) {
         return false;
     }
 
@@ -844,7 +914,8 @@ bool MeasurementDatabase::exportMeasurementsToCsv(
 
 bool MeasurementDatabase::exportMeasurementsToGeoJson(
     const std::filesystem::path& geoJsonPath,
-    const data::SensorOrigin& sensorOrigin
+    const data::SensorOrigin& sensorOrigin,
+    const MeasurementExportFilter& filter
 )
 {
     if (database_ == nullptr) {
@@ -855,7 +926,8 @@ bool MeasurementDatabase::exportMeasurementsToGeoJson(
     return exportMeasurementsToGeoJsonWithGdal(
         database_,
         geoJsonPath,
-        sensorOrigin
+        sensorOrigin,
+        filter
     );
 #else
     std::ofstream output(geoJsonPath);
@@ -873,15 +945,7 @@ bool MeasurementDatabase::exportMeasurementsToGeoJson(
     const geosensor::coordinates::CoordinateTransform transform(sensorOrigin);
     sqlite3_stmt* statement = nullptr;
 
-    if (
-        sqlite3_prepare_v2(
-            database_,
-            kExportMeasurementsSql,
-            -1,
-            &statement,
-            nullptr
-        ) != SQLITE_OK
-    ) {
+    if (!prepareMeasurementExportStatement(database_, filter, &statement)) {
         return false;
     }
 

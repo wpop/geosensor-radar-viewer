@@ -14,6 +14,21 @@ struct sqlite3;
 namespace geosensor::storage
 {
 
+// Selects which measurement rows are exported.
+enum class MeasurementExportMode
+{
+    All,
+    TrackedOnly,
+    TargetId
+};
+
+// Filters measurement export rows by tracking state or target identifier.
+struct MeasurementExportFilter
+{
+    MeasurementExportMode mode {MeasurementExportMode::All};
+    std::int64_t targetId {};
+};
+
 // Stores radar measurements in a SQLite database.
 class MeasurementDatabase
 {
@@ -66,15 +81,17 @@ public:
     // Returns aggregated per-target statistics from SQLite.
     [[nodiscard]] std::optional<std::vector<TrackStatistics>> trackStatistics() const;
 
-    // Exports all stored measurement rows to a CSV file.
+    // Exports stored measurement rows to a CSV file.
     [[nodiscard]] bool exportMeasurementsToCsv(
-        const std::filesystem::path& csvPath
+        const std::filesystem::path& csvPath,
+        const MeasurementExportFilter& filter = {}
     );
 
-    // Exports all stored measurement rows to a GeoJSON file.
+    // Exports stored measurement rows to a GeoJSON file.
     [[nodiscard]] bool exportMeasurementsToGeoJson(
         const std::filesystem::path& geoJsonPath,
-        const data::SensorOrigin& sensorOrigin
+        const data::SensorOrigin& sensorOrigin,
+        const MeasurementExportFilter& filter = {}
     );
 
     // Exports tracked measurements as GeoJSON LineString features.
