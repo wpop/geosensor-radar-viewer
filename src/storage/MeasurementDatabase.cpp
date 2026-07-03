@@ -4,6 +4,8 @@
 
 #include <chrono>
 #include <cstdint>
+#include <fstream>
+#include <locale>
 #include <string>
 #include <string_view>
 
@@ -31,6 +33,10 @@ constexpr const char* kMeasurementCountSql =
 
 constexpr const char* kClearMeasurementsSql =
     "DELETE FROM measurements;";
+
+constexpr const char* kExportMeasurementsSql =
+    "SELECT target_id, timestamp_ms, range_m, azimuth_deg, elevation_deg, intensity "
+    "FROM measurements ORDER BY id;";
 
 constexpr const char* kTargetIdColumnName = "target_id";
 constexpr const char* kTimestampColumnName = "timestamp_ms";
@@ -257,6 +263,67 @@ bool MeasurementDatabase::clearMeasurements()
         nullptr,
         nullptr
     ) == SQLITE_OK;
+}
+
+bool MeasurementDatabase::exportMeasurementsToCsv(
+    const std::filesystem::path& csvPath
+)
+{
+    if (database_ == nullptr) {
+        return false;
+    }
+
+    std::ofstream output(csvPath);
+    if (!output.is_open()) {
+        return false;
+    }
+
+    output.imbue(std::locale::classic());
+
+    output
+        << "target_id,timestamp_ms,range_m,azimuth_deg,elevation_deg,intensity\n";
+    if (!output) {
+        return false;
+    }
+
+    sqlite3_stmt* statement = nullptr;
+
+    if (
+        sqlite3_prepare_v2(
+            database_,
+            kExportMeasurementsSql,
+            -1,
+            &statement,
+            nullptr
+        ) != SQLITE_OK
+    ) {
+        return false;
+    }
+
+    int stepResult = SQLITE_ROW;
+
+    while ((stepResult = sqlite3_step(statement)) == SQLITE_ROW) {
+        if (sqlite3_column_type(statement, 0) == SQLITE_NULL) {
+            output << ',';
+        } else {
+            output << sqlite3_column_int64(statement, 0) << ',';
+        }
+
+        output
+            << sqlite3_column_int64(statement, 1) << ','
+            << sqlite3_column_double(statement, 2) << ','
+            << sqlite3_column_double(statement, 3) << ','
+            << sqlite3_column_double(statement, 4) << ','
+            << sqlite3_column_double(statement, 5) << '\n';
+
+        if (!output) {
+            sqlite3_finalize(statement);
+            return false;
+        }
+    }
+
+    sqlite3_finalize(statement);
+    return stepResult == SQLITE_DONE && static_cast<bool>(output);
 }
 
 std::optional<std::int64_t> MeasurementDatabase::measurementCount() const

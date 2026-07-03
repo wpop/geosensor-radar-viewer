@@ -49,6 +49,11 @@ public:
     // Deletes all stored measurement rows.
     [[nodiscard]] bool clearMeasurements();
 
+    // Exports all stored measurement rows to a CSV file.
+    [[nodiscard]] bool exportMeasurementsToCsv(
+        const std::filesystem::path& csvPath
+    );
+
     // Returns the total stored measurement count.
     [[nodiscard]] std::optional<std::int64_t> measurementCount() const;
 
