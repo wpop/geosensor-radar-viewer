@@ -73,6 +73,10 @@ void MainWindow::setupUi()
     startUdpButton_ = new QPushButton("Start UDP", leftPanel);
     stopUdpButton_ = new QPushButton("Stop UDP", leftPanel);
     clearLiveTargetsButton_ = new QPushButton("Clear Live Targets", leftPanel);
+    clearStoredMeasurementsButton_ = new QPushButton(
+        "Clear Stored Measurements",
+        leftPanel
+    );
     trackStatisticsLabel_ = new QLabel("Track statistics", leftPanel);
     trackStatisticsTable_ = new QTableWidget(leftPanel);
 
@@ -106,6 +110,7 @@ void MainWindow::setupUi()
     leftLayout->addWidget(startUdpButton_);
     leftLayout->addWidget(stopUdpButton_);
     leftLayout->addWidget(clearLiveTargetsButton_);
+    leftLayout->addWidget(clearStoredMeasurementsButton_);
     leftLayout->addWidget(trackStatisticsLabel_);
     leftLayout->addWidget(trackStatisticsTable_, 1);
     leftLayout->setContentsMargins(0, 0, 0, 0);
@@ -188,6 +193,13 @@ void MainWindow::setupUi()
         &QPushButton::clicked,
         this,
         [this]() { clearLiveTargets(); }
+    );
+
+    QObject::connect(
+        clearStoredMeasurementsButton_,
+        &QPushButton::clicked,
+        this,
+        [this]() { clearStoredMeasurements(); }
     );
 
     startUdpReceiver();
@@ -399,6 +411,17 @@ void MainWindow::clearLiveTargets()
     refreshDisplay();
 }
 
+void MainWindow::clearStoredMeasurements()
+{
+    if (!measurementDatabase_.clearMeasurements()) {
+        databaseStatusText_ = "Clear failed";
+    } else if (databaseStatusText_ != "Enabled") {
+        databaseStatusText_ = "Enabled";
+    }
+
+    refreshDisplay();
+}
+
 void MainWindow::updateUdpControlStates()
 {
     const bool isListening = udpReceiver_->isListening();
@@ -406,6 +429,9 @@ void MainWindow::updateUdpControlStates()
     startUdpButton_->setEnabled(!isListening);
     stopUdpButton_->setEnabled(isListening);
     clearLiveTargetsButton_->setEnabled(!liveTargets_.empty());
+    clearStoredMeasurementsButton_->setEnabled(
+        measurementDatabase_.measurementCount().has_value()
+    );
 }
 
 void MainWindow::updateTrackStatisticsTable()

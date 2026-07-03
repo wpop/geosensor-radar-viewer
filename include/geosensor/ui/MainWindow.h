@@ -44,6 +44,7 @@ private:
     void startUdpReceiver();
     void stopUdpReceiver();
     void clearLiveTargets();
+    void clearStoredMeasurements();
     void updateUdpControlStates();
     void updateTrackStatisticsTable();
     [[nodiscard]] std::vector<std::vector<geosensor::data::EnuPosition>>
@@ -56,6 +57,7 @@ private:
     QPushButton* startUdpButton_ {};
     QPushButton* stopUdpButton_ {};
     QPushButton* clearLiveTargetsButton_ {};
+    QPushButton* clearStoredMeasurementsButton_ {};
     geosensor::networking::UdpMeasurementReceiver* udpReceiver_ {};
     std::vector<geosensor::data::SensorMeasurement> csvMeasurements_ {};
     std::vector<geosensor::data::SensorMeasurement> liveMeasurements_ {};
