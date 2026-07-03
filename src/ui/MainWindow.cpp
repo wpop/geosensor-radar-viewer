@@ -303,7 +303,18 @@ void MainWindow::appendLiveMeasurement(
         trackStore_.trimTrackToLastPoints(*targetId, kMaxTrailPointCount);
     }
 
-    if (!measurementDatabase_.insertMeasurement(measurement)) {
+    const std::optional<std::int64_t> databaseTargetId =
+        targetId.has_value()
+            ? std::optional<std::int64_t>(*targetId)
+            : std::nullopt;
+
+    if (
+        !measurementDatabase_.insertTrackMeasurement(
+            measurement,
+            databaseTargetId,
+            std::chrono::system_clock::now()
+        )
+    ) {
         databaseStatusText_ = "Insert failed";
     } else if (databaseStatusText_ != "Enabled") {
         databaseStatusText_ = "Enabled";
