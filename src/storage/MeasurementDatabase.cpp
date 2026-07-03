@@ -2,7 +2,10 @@
 
 #include <sqlite3.h>
 
+#include <chrono>
+#include <cstdint>
 #include <string>
+#include <string_view>
 
 namespace
 {
@@ -10,6 +13,8 @@ namespace
 constexpr const char* kCreateMeasurementTableSql =
     "CREATE TABLE IF NOT EXISTS measurements ("
     "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+    "target_id INTEGER,"
+    "timestamp_ms INTEGER NOT NULL,"
     "range_m REAL NOT NULL,"
     "azimuth_deg REAL NOT NULL,"
     "elevation_deg REAL NOT NULL,"
@@ -18,11 +23,145 @@ constexpr const char* kCreateMeasurementTableSql =
 
 constexpr const char* kInsertMeasurementSql =
     "INSERT INTO measurements ("
-    "range_m, azimuth_deg, elevation_deg, intensity"
-    ") VALUES (?, ?, ?, ?);";
+    "target_id, timestamp_ms, range_m, azimuth_deg, elevation_deg, intensity"
+    ") VALUES (?, ?, ?, ?, ?, ?);";
 
 constexpr const char* kMeasurementCountSql =
     "SELECT COUNT(*) FROM measurements;";
+
+constexpr const char* kTargetIdColumnName = "target_id";
+constexpr const char* kTimestampColumnName = "timestamp_ms";
+
+bool columnExists(
+    sqlite3* database,
+    std::string_view tableName,
+    std::string_view columnName
+)
+{
+    sqlite3_stmt* statement = nullptr;
+
+    const std::string pragmaSql = "PRAGMA table_info(" + std::string(tableName) + ");";
+    if (
+        sqlite3_prepare_v2(
+            database,
+            pragmaSql.c_str(),
+            -1,
+            &statement,
+            nullptr
+        ) != SQLITE_OK
+    ) {
+        return false;
+    }
+
+    bool exists = false;
+
+    while (sqlite3_step(statement) == SQLITE_ROW) {
+        const unsigned char* nameText = sqlite3_column_text(statement, 1);
+        if (
+            nameText != nullptr &&
+            columnName == reinterpret_cast<const char*>(nameText)
+        ) {
+            exists = true;
+            break;
+        }
+    }
+
+    sqlite3_finalize(statement);
+    return exists;
+}
+
+bool addColumnIfMissing(
+    sqlite3* database,
+    std::string_view tableName,
+    std::string_view columnName,
+    std::string_view columnDefinition
+)
+{
+    if (columnExists(database, tableName, columnName)) {
+        return true;
+    }
+
+    const std::string alterSql =
+        "ALTER TABLE " + std::string(tableName) +
+        " ADD COLUMN " + std::string(columnDefinition) + ";";
+
+    return sqlite3_exec(database, alterSql.c_str(), nullptr, nullptr, nullptr) == SQLITE_OK;
+}
+
+bool ensureMeasurementSchema(sqlite3* database)
+{
+    if (
+        sqlite3_exec(
+            database,
+            kCreateMeasurementTableSql,
+            nullptr,
+            nullptr,
+            nullptr
+        ) != SQLITE_OK
+    ) {
+        return false;
+    }
+
+    if (
+        !addColumnIfMissing(
+            database,
+            "measurements",
+            kTargetIdColumnName,
+            "target_id INTEGER"
+        )
+    ) {
+        return false;
+    }
+
+    return addColumnIfMissing(
+        database,
+        "measurements",
+        kTimestampColumnName,
+        "timestamp_ms INTEGER NOT NULL DEFAULT 0"
+    );
+}
+
+bool insertMeasurementRow(
+    sqlite3* database,
+    const geosensor::data::SensorMeasurement& measurement,
+    std::optional<std::int64_t> targetId,
+    std::int64_t timestampMs
+)
+{
+    if (database == nullptr) {
+        return false;
+    }
+
+    sqlite3_stmt* statement = nullptr;
+
+    if (
+        sqlite3_prepare_v2(
+            database,
+            kInsertMeasurementSql,
+            -1,
+            &statement,
+            nullptr
+        ) != SQLITE_OK
+    ) {
+        return false;
+    }
+
+    if (targetId.has_value()) {
+        sqlite3_bind_int64(statement, 1, *targetId);
+    } else {
+        sqlite3_bind_null(statement, 1);
+    }
+    sqlite3_bind_int64(statement, 2, timestampMs);
+    sqlite3_bind_double(statement, 3, measurement.rangeM);
+    sqlite3_bind_double(statement, 4, measurement.azimuthDeg);
+    sqlite3_bind_double(statement, 5, measurement.elevationDeg);
+    sqlite3_bind_double(statement, 6, measurement.intensity);
+
+    const int stepResult = sqlite3_step(statement);
+    sqlite3_finalize(statement);
+
+    return stepResult == SQLITE_DONE;
+}
 
 } // namespace
 
@@ -64,15 +203,7 @@ bool MeasurementDatabase::open(const std::filesystem::path& databasePath)
         return false;
     }
 
-    if (
-        sqlite3_exec(
-            database_,
-            kCreateMeasurementTableSql,
-            nullptr,
-            nullptr,
-            nullptr
-        ) != SQLITE_OK
-    ) {
+    if (!ensureMeasurementSchema(database_)) {
         close();
         return false;
     }
@@ -84,33 +215,30 @@ bool MeasurementDatabase::insertMeasurement(
     const data::SensorMeasurement& measurement
 )
 {
-    if (database_ == nullptr) {
-        return false;
-    }
+    return insertTrackMeasurement(
+        measurement,
+        std::nullopt,
+        std::chrono::system_clock::now()
+    );
+}
 
-    sqlite3_stmt* statement = nullptr;
+bool MeasurementDatabase::insertTrackMeasurement(
+    const data::SensorMeasurement& measurement,
+    std::optional<std::int64_t> targetId,
+    const std::chrono::system_clock::time_point& timestamp
+)
+{
+    const std::int64_t timestampMs =
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            timestamp.time_since_epoch()
+        ).count();
 
-    if (
-        sqlite3_prepare_v2(
-            database_,
-            kInsertMeasurementSql,
-            -1,
-            &statement,
-            nullptr
-        ) != SQLITE_OK
-    ) {
-        return false;
-    }
-
-    sqlite3_bind_double(statement, 1, measurement.rangeM);
-    sqlite3_bind_double(statement, 2, measurement.azimuthDeg);
-    sqlite3_bind_double(statement, 3, measurement.elevationDeg);
-    sqlite3_bind_double(statement, 4, measurement.intensity);
-
-    const int stepResult = sqlite3_step(statement);
-    sqlite3_finalize(statement);
-
-    return stepResult == SQLITE_DONE;
+    return insertMeasurementRow(
+        database_,
+        measurement,
+        targetId,
+        timestampMs
+    );
 }
 
 std::optional<std::int64_t> MeasurementDatabase::measurementCount() const

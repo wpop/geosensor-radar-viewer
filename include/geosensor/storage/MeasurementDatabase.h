@@ -2,6 +2,7 @@
 
 #include "geosensor/data/SensorMeasurement.h"
 
+#include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <optional>
@@ -33,9 +34,16 @@ public:
     // Opens or creates the database file and required table.
     [[nodiscard]] bool open(const std::filesystem::path& databasePath);
 
-    // Inserts one measurement row into the database.
+    // Inserts one legacy live measurement row without a target identifier.
     [[nodiscard]] bool insertMeasurement(
         const data::SensorMeasurement& measurement
+    );
+
+    // Inserts one live measurement row with an optional target identifier.
+    [[nodiscard]] bool insertTrackMeasurement(
+        const data::SensorMeasurement& measurement,
+        std::optional<std::int64_t> targetId,
+        const std::chrono::system_clock::time_point& timestamp
     );
 
     // Returns the total stored measurement count.
