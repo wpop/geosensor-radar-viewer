@@ -124,17 +124,27 @@ std::string readCsvFile(const std::filesystem::path& path)
     return stream.str();
 }
 
+#ifdef GEOSENSOR_HAVE_GDAL
+
 bool approximatelyEqual(double lhs, double rhs, double epsilon = 1e-9)
 {
     return std::abs(lhs - rhs) <= epsilon;
 }
 
-#ifdef GEOSENSOR_HAVE_GDAL
 struct GeoJsonFeatureExpectation
 {
     std::optional<std::int64_t> targetId {};
     std::int64_t timestampMs {};
     geosensor::data::SensorMeasurement measurement {};
+};
+
+struct TrackGeoJsonFeatureExpectation
+{
+    std::int64_t targetId {};
+    std::int64_t pointCount {};
+    std::int64_t firstTimestampMs {};
+    std::int64_t lastTimestampMs {};
+    std::vector<geosensor::data::SensorMeasurement> measurements {};
 };
 
 void validateGeoJsonExportWithGdal(
@@ -238,6 +248,92 @@ void validateGeoJsonExportWithGdal(
                 1e-8
             )
         );
+
+        OGR_F_Destroy(feature);
+    }
+
+    assert(OGR_L_GetNextFeature(layer) == nullptr);
+    GDALClose(dataset);
+}
+
+void validateTracksGeoJsonExportWithGdal(
+    const std::filesystem::path& geoJsonPath,
+    const geosensor::data::SensorOrigin& sensorOrigin,
+    const std::vector<TrackGeoJsonFeatureExpectation>& expectations
+)
+{
+    GDALAllRegister();
+
+    GDALDatasetH dataset = GDALOpenEx(
+        geoJsonPath.string().c_str(),
+        GDAL_OF_VECTOR | GDAL_OF_READONLY,
+        nullptr,
+        nullptr,
+        nullptr
+    );
+
+    assert(dataset != nullptr);
+
+    OGRLayerH layer = GDALDatasetGetLayer(dataset, 0);
+    assert(layer != nullptr);
+
+    assert(OGR_L_GetFeatureCount(layer, 1) == static_cast<GIntBig>(expectations.size()));
+
+    geosensor::coordinates::CoordinateTransform transform(sensorOrigin);
+    OGR_L_ResetReading(layer);
+
+    for (const auto& expectation : expectations) {
+        OGRFeatureH feature = OGR_L_GetNextFeature(layer);
+        assert(feature != nullptr);
+
+        const int targetIdFieldIndex = OGR_F_GetFieldIndex(feature, "target_id");
+        const int pointCountFieldIndex = OGR_F_GetFieldIndex(feature, "point_count");
+        const int firstTimestampFieldIndex =
+            OGR_F_GetFieldIndex(feature, "first_timestamp_ms");
+        const int lastTimestampFieldIndex =
+            OGR_F_GetFieldIndex(feature, "last_timestamp_ms");
+
+        assert(targetIdFieldIndex >= 0);
+        assert(pointCountFieldIndex >= 0);
+        assert(firstTimestampFieldIndex >= 0);
+        assert(lastTimestampFieldIndex >= 0);
+
+        assert(OGR_F_GetFieldAsInteger64(feature, targetIdFieldIndex) == expectation.targetId);
+        assert(
+            OGR_F_GetFieldAsInteger64(feature, pointCountFieldIndex) ==
+            expectation.pointCount
+        );
+        assert(
+            OGR_F_GetFieldAsInteger64(feature, firstTimestampFieldIndex) ==
+            expectation.firstTimestampMs
+        );
+        assert(
+            OGR_F_GetFieldAsInteger64(feature, lastTimestampFieldIndex) ==
+            expectation.lastTimestampMs
+        );
+
+        OGRGeometryH geometry = OGR_F_GetGeometryRef(feature);
+        assert(geometry != nullptr);
+        assert(wkbFlatten(OGR_G_GetGeometryType(geometry)) == wkbLineString);
+        assert(OGR_G_GetPointCount(geometry) == static_cast<int>(expectation.measurements.size()));
+
+        for (std::size_t index = 0; index < expectation.measurements.size(); ++index) {
+            const auto expectedPosition = transform.transform(expectation.measurements[index]);
+            assert(
+                approximatelyEqual(
+                    OGR_G_GetX(geometry, static_cast<int>(index)),
+                    expectedPosition.geographic.longitudeDeg,
+                    1e-8
+                )
+            );
+            assert(
+                approximatelyEqual(
+                    OGR_G_GetY(geometry, static_cast<int>(index)),
+                    expectedPosition.geographic.latitudeDeg,
+                    1e-8
+                )
+            );
+        }
 
         OGR_F_Destroy(feature);
     }
@@ -554,6 +650,134 @@ void testExportMeasurementsWritesGeoJson()
     std::filesystem::remove(geoJsonPath, errorCode);
 }
 
+void testExportTracksWritesGeoJson()
+{
+    removeTestDatabase();
+
+    geosensor::storage::MeasurementDatabase database;
+    assert(database.open(testDatabasePath()));
+
+    const geosensor::data::SensorOrigin sensorOrigin {
+        .latitudeDeg = 49.2488,
+        .longitudeDeg = -122.9805,
+        .altitudeM = 50.0
+    };
+
+    const geosensor::data::SensorMeasurement targetOneThirdMeasurement {
+        .rangeM = 110.0,
+        .azimuthDeg = 11.0,
+        .elevationDeg = 1.1,
+        .intensity = 0.20
+    };
+    const geosensor::data::SensorMeasurement targetOneFirstMeasurement {
+        .rangeM = 100.0,
+        .azimuthDeg = 10.0,
+        .elevationDeg = 1.0,
+        .intensity = 0.10
+    };
+    const geosensor::data::SensorMeasurement targetOneSecondMeasurement {
+        .rangeM = 120.0,
+        .azimuthDeg = 12.0,
+        .elevationDeg = 1.2,
+        .intensity = 0.30
+    };
+    const geosensor::data::SensorMeasurement targetTwoFirstMeasurement {
+        .rangeM = 130.0,
+        .azimuthDeg = 20.0,
+        .elevationDeg = 2.0,
+        .intensity = 0.40
+    };
+    const geosensor::data::SensorMeasurement targetTwoSecondMeasurement {
+        .rangeM = 140.0,
+        .azimuthDeg = 21.0,
+        .elevationDeg = 2.1,
+        .intensity = 0.50
+    };
+
+    assert(database.insertTrackMeasurement(
+        targetOneThirdMeasurement,
+        1,
+        std::chrono::system_clock::time_point{std::chrono::milliseconds{3'000LL}}
+    ));
+    assert(database.insertMeasurement(geosensor::data::SensorMeasurement {
+        .rangeM = 160.0,
+        .azimuthDeg = 30.0,
+        .elevationDeg = 3.0,
+        .intensity = 0.70
+    }));
+    assert(database.insertTrackMeasurement(
+        targetOneFirstMeasurement,
+        1,
+        std::chrono::system_clock::time_point{std::chrono::milliseconds{1'000LL}}
+    ));
+    assert(database.insertTrackMeasurement(
+        targetTwoFirstMeasurement,
+        2,
+        std::chrono::system_clock::time_point{std::chrono::milliseconds{4'000LL}}
+    ));
+    assert(database.insertTrackMeasurement(
+        targetTwoSecondMeasurement,
+        2,
+        std::chrono::system_clock::time_point{std::chrono::milliseconds{5'000LL}}
+    ));
+    assert(database.insertTrackMeasurement(
+        targetOneSecondMeasurement,
+        1,
+        std::chrono::system_clock::time_point{std::chrono::milliseconds{2'000LL}}
+    ));
+    assert(database.insertTrackMeasurement(
+        geosensor::data::SensorMeasurement {
+            .rangeM = 150.0,
+            .azimuthDeg = 25.0,
+            .elevationDeg = 2.5,
+            .intensity = 0.60
+        },
+        9,
+        std::chrono::system_clock::time_point{std::chrono::milliseconds{6'000LL}}
+    ));
+
+    const std::filesystem::path geoJsonPath =
+        std::filesystem::temp_directory_path() /
+        "geosensor_measurement_database_tests_tracks.geojson";
+    std::error_code errorCode;
+    std::filesystem::remove(geoJsonPath, errorCode);
+
+#ifdef GEOSENSOR_HAVE_GDAL
+    assert(database.exportTracksToGeoJson(geoJsonPath, sensorOrigin));
+    validateTracksGeoJsonExportWithGdal(
+        geoJsonPath,
+        sensorOrigin,
+        {
+            TrackGeoJsonFeatureExpectation {
+                .targetId = 1,
+                .pointCount = 3,
+                .firstTimestampMs = 1'000LL,
+                .lastTimestampMs = 3'000LL,
+                .measurements = {
+                    targetOneFirstMeasurement,
+                    targetOneSecondMeasurement,
+                    targetOneThirdMeasurement,
+                },
+            },
+            TrackGeoJsonFeatureExpectation {
+                .targetId = 2,
+                .pointCount = 2,
+                .firstTimestampMs = 4'000LL,
+                .lastTimestampMs = 5'000LL,
+                .measurements = {
+                    targetTwoFirstMeasurement,
+                    targetTwoSecondMeasurement,
+                },
+            },
+        }
+    );
+#else
+    assert(!database.exportTracksToGeoJson(geoJsonPath, sensorOrigin));
+#endif
+
+    std::filesystem::remove(geoJsonPath, errorCode);
+}
+
 void testInsertFailsWhenDatabaseIsNotOpen()
 {
     geosensor::storage::MeasurementDatabase database;
@@ -595,6 +819,7 @@ int main()
     testClearMeasurementsEmptiesAnOpenDatabase();
     testExportMeasurementsWritesCsv();
     testExportMeasurementsWritesGeoJson();
+    testExportTracksWritesGeoJson();
     testInsertFailsWhenDatabaseIsNotOpen();
     removeTestDatabase();
 

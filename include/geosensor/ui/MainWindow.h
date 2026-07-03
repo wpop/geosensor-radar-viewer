@@ -46,6 +46,7 @@ private:
     void clearLiveTargets();
     void clearStoredMeasurements();
     void exportStoredMeasurementsToGeoJson();
+    void exportTrackedMeasurementsToGeoJson();
     void updateUdpControlStates();
     void updateTrackStatisticsTable();
     [[nodiscard]] std::vector<std::vector<geosensor::data::EnuPosition>>
@@ -60,6 +61,7 @@ private:
     QPushButton* clearLiveTargetsButton_ {};
     QPushButton* clearStoredMeasurementsButton_ {};
     QPushButton* exportMeasurementsGeoJsonButton_ {};
+    QPushButton* exportTracksGeoJsonButton_ {};
     geosensor::networking::UdpMeasurementReceiver* udpReceiver_ {};
     std::vector<geosensor::data::SensorMeasurement> csvMeasurements_ {};
     std::vector<geosensor::data::SensorMeasurement> liveMeasurements_ {};

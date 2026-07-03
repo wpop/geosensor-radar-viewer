@@ -12,6 +12,7 @@
 #include <locale>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #ifdef GEOSENSOR_HAVE_GDAL
 #include <gdal.h>
@@ -48,6 +49,14 @@ constexpr const char* kClearMeasurementsSql =
 constexpr const char* kExportMeasurementsSql =
     "SELECT target_id, timestamp_ms, range_m, azimuth_deg, elevation_deg, intensity "
     "FROM measurements ORDER BY id;";
+
+#ifdef GEOSENSOR_HAVE_GDAL
+constexpr const char* kExportTracksSql =
+    "SELECT target_id, timestamp_ms, range_m, azimuth_deg, elevation_deg, intensity "
+    "FROM measurements "
+    "WHERE target_id IS NOT NULL "
+    "ORDER BY target_id, timestamp_ms, id;";
+#endif
 
 constexpr const char* kTargetIdColumnName = "target_id";
 constexpr const char* kTimestampColumnName = "timestamp_ms";
@@ -403,6 +412,221 @@ bool exportMeasurementsToGeoJsonWithGdal(
 
     return writeSucceeded && syncSucceeded && std::filesystem::exists(geoJsonPath);
 }
+
+bool exportTracksToGeoJsonWithGdal(
+    sqlite3* database,
+    const std::filesystem::path& geoJsonPath,
+    const geosensor::data::SensorOrigin& sensorOrigin
+)
+{
+    std::error_code errorCode;
+    std::filesystem::remove(geoJsonPath, errorCode);
+
+    GDALAllRegister();
+
+    OGRSFDriverH driver = OGRGetDriverByName("GeoJSON");
+    if (driver == nullptr) {
+        return false;
+    }
+
+    OGRDataSourceH dataSource =
+        OGR_Dr_CreateDataSource(driver, geoJsonPath.string().c_str(), nullptr);
+    if (dataSource == nullptr) {
+        return false;
+    }
+
+    OGRSpatialReferenceH spatialReference = OSRNewSpatialReference(nullptr);
+    if (spatialReference == nullptr) {
+        OGR_DS_Destroy(dataSource);
+        return false;
+    }
+
+    sqlite3_stmt* statement = nullptr;
+
+    if (
+        OSRImportFromEPSG(spatialReference, 4326) != OGRERR_NONE
+    ) {
+        OSRDestroySpatialReference(spatialReference);
+        OGR_DS_Destroy(dataSource);
+        return false;
+    }
+
+    OSRSetAxisMappingStrategy(spatialReference, OAMS_TRADITIONAL_GIS_ORDER);
+
+    OGRLayerH layer = OGR_DS_CreateLayer(
+        dataSource,
+        "tracks",
+        spatialReference,
+        wkbLineString,
+        nullptr
+    );
+    if (layer == nullptr) {
+        OSRDestroySpatialReference(spatialReference);
+        OGR_DS_Destroy(dataSource);
+        return false;
+    }
+
+    if (
+        !addGdalField(layer, "target_id", OFTInteger64) ||
+        !addGdalField(layer, "point_count", OFTInteger64) ||
+        !addGdalField(layer, "first_timestamp_ms", OFTInteger64) ||
+        !addGdalField(layer, "last_timestamp_ms", OFTInteger64)
+    ) {
+        OSRDestroySpatialReference(spatialReference);
+        OGR_DS_Destroy(dataSource);
+        return false;
+    }
+
+    if (
+        sqlite3_prepare_v2(
+            database,
+            kExportTracksSql,
+            -1,
+            &statement,
+            nullptr
+        ) != SQLITE_OK
+    ) {
+        OSRDestroySpatialReference(spatialReference);
+        OGR_DS_Destroy(dataSource);
+        return false;
+    }
+
+    const OGRFeatureDefnH layerDefinition = OGR_L_GetLayerDefn(layer);
+    const int targetIdFieldIndex = OGR_FD_GetFieldIndex(layerDefinition, "target_id");
+    const int pointCountFieldIndex = OGR_FD_GetFieldIndex(layerDefinition, "point_count");
+    const int firstTimestampFieldIndex =
+        OGR_FD_GetFieldIndex(layerDefinition, "first_timestamp_ms");
+    const int lastTimestampFieldIndex =
+        OGR_FD_GetFieldIndex(layerDefinition, "last_timestamp_ms");
+
+    if (
+        targetIdFieldIndex < 0 ||
+        pointCountFieldIndex < 0 ||
+        firstTimestampFieldIndex < 0 ||
+        lastTimestampFieldIndex < 0
+    ) {
+        sqlite3_finalize(statement);
+        OSRDestroySpatialReference(spatialReference);
+        OGR_DS_Destroy(dataSource);
+        return false;
+    }
+
+    const geosensor::coordinates::CoordinateTransform transform(sensorOrigin);
+    std::optional<std::int64_t> currentTargetId;
+    std::vector<geosensor::data::TargetPosition> currentPositions;
+    std::int64_t firstTimestampMs = 0;
+    std::int64_t lastTimestampMs = 0;
+
+    auto emitCurrentTrack = [&]() -> bool {
+        if (!currentTargetId.has_value() || currentPositions.size() < 2) {
+            currentPositions.clear();
+            return true;
+        }
+
+        OGRFeatureH feature = OGR_F_Create(layerDefinition);
+        if (feature == nullptr) {
+            return false;
+        }
+
+        OGR_F_SetFieldInteger64(feature, targetIdFieldIndex, *currentTargetId);
+        OGR_F_SetFieldInteger64(
+            feature,
+            pointCountFieldIndex,
+            static_cast<GIntBig>(currentPositions.size())
+        );
+        OGR_F_SetFieldInteger64(
+            feature,
+            firstTimestampFieldIndex,
+            firstTimestampMs
+        );
+        OGR_F_SetFieldInteger64(
+            feature,
+            lastTimestampFieldIndex,
+            lastTimestampMs
+        );
+
+        OGRGeometryH lineGeometry = OGR_G_CreateGeometry(wkbLineString);
+        if (lineGeometry == nullptr) {
+            OGR_F_Destroy(feature);
+            return false;
+        }
+
+        for (const auto& point : currentPositions) {
+            OGR_G_AddPoint_2D(
+                lineGeometry,
+                point.geographic.longitudeDeg,
+                point.geographic.latitudeDeg
+            );
+        }
+
+        if (OGR_F_SetGeometryDirectly(feature, lineGeometry) != OGRERR_NONE) {
+            OGR_F_Destroy(feature);
+            return false;
+        }
+
+        if (OGR_L_CreateFeature(layer, feature) != OGRERR_NONE) {
+            OGR_F_Destroy(feature);
+            return false;
+        }
+
+        OGR_F_Destroy(feature);
+        currentPositions.clear();
+        return true;
+    };
+
+    int stepResult = SQLITE_ROW;
+
+    while ((stepResult = sqlite3_step(statement)) == SQLITE_ROW) {
+        const std::int64_t targetId = sqlite3_column_int64(statement, 0);
+        const std::int64_t timestampMs = sqlite3_column_int64(statement, 1);
+        const auto measurement = geosensor::data::SensorMeasurement {
+            .rangeM = sqlite3_column_double(statement, 2),
+            .azimuthDeg = sqlite3_column_double(statement, 3),
+            .elevationDeg = sqlite3_column_double(statement, 4),
+            .intensity = sqlite3_column_double(statement, 5),
+        };
+
+        if (!currentTargetId.has_value()) {
+            currentTargetId = targetId;
+            firstTimestampMs = timestampMs;
+        } else if (*currentTargetId != targetId) {
+            if (!emitCurrentTrack()) {
+                sqlite3_finalize(statement);
+                OSRDestroySpatialReference(spatialReference);
+                OGR_DS_Destroy(dataSource);
+                return false;
+            }
+
+            currentTargetId = targetId;
+            firstTimestampMs = timestampMs;
+        }
+
+        lastTimestampMs = timestampMs;
+        currentPositions.push_back(transform.transform(measurement));
+    }
+
+    if (stepResult != SQLITE_DONE) {
+        sqlite3_finalize(statement);
+        OSRDestroySpatialReference(spatialReference);
+        OGR_DS_Destroy(dataSource);
+        return false;
+    }
+
+    if (!emitCurrentTrack()) {
+        sqlite3_finalize(statement);
+        OSRDestroySpatialReference(spatialReference);
+        OGR_DS_Destroy(dataSource);
+        return false;
+    }
+
+    const bool syncSucceeded = OGR_DS_SyncToDisk(dataSource) == OGRERR_NONE;
+
+    sqlite3_finalize(statement);
+    OSRDestroySpatialReference(spatialReference);
+    OGR_DS_Destroy(dataSource);
+
+    return syncSucceeded && std::filesystem::exists(geoJsonPath);
+}
 #endif
 
 } // namespace
@@ -663,6 +887,28 @@ bool MeasurementDatabase::exportMeasurementsToGeoJson(
     output << "\n  ]\n}\n";
     sqlite3_finalize(statement);
     return stepResult == SQLITE_DONE && static_cast<bool>(output);
+#endif
+}
+
+bool MeasurementDatabase::exportTracksToGeoJson(
+    const std::filesystem::path& geoJsonPath,
+    const data::SensorOrigin& sensorOrigin
+)
+{
+    if (database_ == nullptr) {
+        return false;
+    }
+
+#ifdef GEOSENSOR_HAVE_GDAL
+    return exportTracksToGeoJsonWithGdal(
+        database_,
+        geoJsonPath,
+        sensorOrigin
+    );
+#else
+    (void)geoJsonPath;
+    (void)sensorOrigin;
+    return false;
 #endif
 }
 

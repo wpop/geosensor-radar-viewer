@@ -61,6 +61,12 @@ public:
         const data::SensorOrigin& sensorOrigin
     );
 
+    // Exports tracked measurements as GeoJSON LineString features.
+    [[nodiscard]] bool exportTracksToGeoJson(
+        const std::filesystem::path& geoJsonPath,
+        const data::SensorOrigin& sensorOrigin
+    );
+
     // Returns the total stored measurement count.
     [[nodiscard]] std::optional<std::int64_t> measurementCount() const;
 
