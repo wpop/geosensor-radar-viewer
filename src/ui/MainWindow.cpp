@@ -4,6 +4,7 @@
 #include "geosensor/io/CsvMeasurementLoader.h"
 #include "geosensor/networking/UdpMeasurementReceiver.h"
 #include "geosensor/storage/MeasurementDatabase.h"
+#include "geosensor/tracking/TrackStore.h"
 #include "geosensor/ui/RadarView.h"
 
 #include <QHBoxLayout>
@@ -16,6 +17,8 @@
 
 #include <exception>
 #include <filesystem>
+#include <chrono>
+#include <optional>
 #include <vector>
 
 namespace geosensor::ui
@@ -25,6 +28,7 @@ namespace
 {
 
 constexpr std::size_t kMaxLiveTargetCount = 100;
+constexpr std::size_t kMaxTrailPointCount = 20;
 
 } // namespace
 
@@ -107,10 +111,10 @@ void MainWindow::setupUi()
 
     QObject::connect(
         udpReceiver_,
-        &geosensor::networking::UdpMeasurementReceiver::measurementReceived,
+        &geosensor::networking::UdpMeasurementReceiver::packetReceived,
         this,
-        [this](const geosensor::data::SensorMeasurement& measurement) {
-            appendLiveMeasurement(measurement);
+        [this](const geosensor::io::UdpMeasurementPacket& packet) {
+            appendLiveMeasurement(packet.measurement, packet.targetId);
         }
     );
 
@@ -159,6 +163,7 @@ void MainWindow::refreshDisplay()
 {
     radarView_->setSampleTargets(csvTargets_);
     radarView_->setLiveTargets(liveTargets_);
+    radarView_->setTargetTrails(buildTargetTrails());
     updateUdpControlStates();
 
     QString measurementRows;
@@ -277,12 +282,26 @@ void MainWindow::refreshDisplay()
 }
 
 void MainWindow::appendLiveMeasurement(
-    const geosensor::data::SensorMeasurement& measurement
+    const geosensor::data::SensorMeasurement& measurement,
+    const std::optional<geosensor::tracking::TrackId>& targetId
 )
 {
     ++totalValidUdpPackets_;
     liveMeasurements_.push_back(measurement);
-    liveTargets_.push_back(transform_.transform(measurement).enu);
+    const auto target = transform_.transform(measurement);
+    liveTargets_.push_back(target.enu);
+
+    if (targetId.has_value()) {
+        trackStore_.addPoint(
+            geosensor::tracking::TrackPoint {
+                .targetId = *targetId,
+                .measurement = measurement,
+                .position = target.enu,
+                .timestamp = std::chrono::system_clock::now(),
+            }
+        );
+        trackStore_.trimTrackToLastPoints(*targetId, kMaxTrailPointCount);
+    }
 
     if (!measurementDatabase_.insertMeasurement(measurement)) {
         databaseStatusText_ = "Insert failed";
@@ -323,6 +342,7 @@ void MainWindow::clearLiveTargets()
 {
     liveMeasurements_.clear();
     liveTargets_.clear();
+    trackStore_.clear();
     refreshDisplay();
 }
 
@@ -333,6 +353,37 @@ void MainWindow::updateUdpControlStates()
     startUdpButton_->setEnabled(!isListening);
     stopUdpButton_->setEnabled(isListening);
     clearLiveTargetsButton_->setEnabled(!liveTargets_.empty());
+}
+
+std::vector<std::vector<geosensor::data::EnuPosition>> MainWindow::buildTargetTrails(
+) const
+{
+    std::vector<std::vector<geosensor::data::EnuPosition>> trails;
+    const auto trackIds = trackStore_.trackIds();
+    trails.reserve(trackIds.size());
+
+    for (const auto trackId : trackIds) {
+        const auto* points = trackStore_.pointsForTrack(trackId);
+        if (points == nullptr || points->size() < 2) {
+            continue;
+        }
+
+        const std::size_t firstPointIndex =
+            points->size() > kMaxTrailPointCount
+                ? points->size() - kMaxTrailPointCount
+                : 0;
+
+        std::vector<geosensor::data::EnuPosition> trail;
+        trail.reserve(points->size() - firstPointIndex);
+
+        for (std::size_t i = firstPointIndex; i < points->size(); ++i) {
+            trail.push_back((*points)[i].position);
+        }
+
+        trails.push_back(std::move(trail));
+    }
+
+    return trails;
 }
 
 } // namespace geosensor::ui

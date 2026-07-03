@@ -1,12 +1,15 @@
 #pragma once
 
 #include "geosensor/coordinates/CoordinateTransform.h"
+#include "geosensor/io/UdpMeasurementParser.h"
 #include "geosensor/data/SensorMeasurement.h"
 #include "geosensor/storage/MeasurementDatabase.h"
+#include "geosensor/tracking/TrackStore.h"
 
 #include <QLabel>
 #include <QMainWindow>
 
+#include <optional>
 #include <vector>
 
 class QPushButton;
@@ -33,11 +36,16 @@ public:
 private:
     void setupUi();
     void refreshDisplay();
-    void appendLiveMeasurement(const geosensor::data::SensorMeasurement& measurement);
+    void appendLiveMeasurement(
+        const geosensor::data::SensorMeasurement& measurement,
+        const std::optional<geosensor::tracking::TrackId>& targetId = std::nullopt
+    );
     void startUdpReceiver();
     void stopUdpReceiver();
     void clearLiveTargets();
     void updateUdpControlStates();
+    [[nodiscard]] std::vector<std::vector<geosensor::data::EnuPosition>>
+    buildTargetTrails() const;
 
     QLabel* titleLabel_ {};
     RadarView* radarView_ {};
@@ -49,6 +57,7 @@ private:
     std::vector<geosensor::data::SensorMeasurement> liveMeasurements_ {};
     std::vector<geosensor::data::EnuPosition> csvTargets_ {};
     std::vector<geosensor::data::EnuPosition> liveTargets_ {};
+    geosensor::tracking::TrackStore trackStore_ {};
     geosensor::data::SensorOrigin sensorOrigin_ {
         .latitudeDeg = 49.2488,
         .longitudeDeg = -122.9805,

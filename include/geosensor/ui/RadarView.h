@@ -36,6 +36,11 @@ public:
         const std::vector<geosensor::data::EnuPosition>& targets
     );
 
+    // Updates the tracked target trail layer.
+    void setTargetTrails(
+        const std::vector<std::vector<geosensor::data::EnuPosition>>& trails
+    );
+
 protected:
     void resizeEvent(QResizeEvent* event) override;
 
@@ -43,11 +48,13 @@ private:
     void setupScene();
     void fitSceneInView();
     void drawSampleTargets();
+    void drawTargetTrails();
     void drawLiveTargets();
 
     QGraphicsScene scene_ {};
     std::vector<geosensor::data::EnuPosition> sampleTargets_ {};
     std::vector<geosensor::data::EnuPosition> liveTargets_ {};
+    std::vector<std::vector<geosensor::data::EnuPosition>> targetTrails_ {};
 };
 
 } // namespace geosensor::ui

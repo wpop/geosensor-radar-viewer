@@ -48,6 +48,14 @@ void RadarView::setLiveTargets(
     setupScene();
 }
 
+void RadarView::setTargetTrails(
+    const std::vector<std::vector<geosensor::data::EnuPosition>>& trails
+)
+{
+    targetTrails_ = trails;
+    setupScene();
+}
+
 void RadarView::setupScene()
 {
     // Use a simple radar-like coordinate space centered on the sensor.
@@ -103,6 +111,7 @@ void RadarView::setupScene()
     scene_.addEllipse(-1.0, -1.0, 2.0, 2.0, sensorPen, sensorBrush);
 
     drawSampleTargets();
+    drawTargetTrails();
     drawLiveTargets();
 
     const qreal legendLeft = -sceneRadius - kScenePadding + 1.2;
@@ -112,6 +121,7 @@ void RadarView::setupScene()
         "Sensor: yellow",
         "CSV/sample: gray",
         "Live UDP: red",
+        "Trails: dark red",
         "Rings: range"
     };
 
@@ -149,6 +159,27 @@ void RadarView::drawSampleTargets()
         const qreal y = -target.northM / kMetersPerSceneUnit;
 
         scene_.addEllipse(x - 0.55, y - 0.55, 1.1, 1.1, samplePen, sampleBrush);
+    }
+}
+
+void RadarView::drawTargetTrails()
+{
+    QPen trailPen(QColor(144, 36, 27, 180), 1.5);
+    trailPen.setCosmetic(true);
+
+    for (const auto& trail : targetTrails_) {
+        if (trail.size() < 2) {
+            continue;
+        }
+
+        for (std::size_t i = 1; i < trail.size(); ++i) {
+            const qreal x1 = trail[i - 1].eastM / kMetersPerSceneUnit;
+            const qreal y1 = -trail[i - 1].northM / kMetersPerSceneUnit;
+            const qreal x2 = trail[i].eastM / kMetersPerSceneUnit;
+            const qreal y2 = -trail[i].northM / kMetersPerSceneUnit;
+
+            scene_.addLine(x1, y1, x2, y2, trailPen);
+        }
     }
 }
 
