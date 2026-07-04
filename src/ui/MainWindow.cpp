@@ -9,6 +9,7 @@
 
 #include <QDateTime>
 #include <QComboBox>
+#include <QGroupBox>
 #include <QHeaderView>
 #include <QFileDialog>
 #include <QHBoxLayout>
@@ -19,6 +20,7 @@
 #include <QObject>
 #include <QPushButton>
 #include <QSpinBox>
+#include <QSizePolicy>
 #include <QString>
 #include <QWidget>
 
@@ -63,17 +65,26 @@ MainWindow::MainWindow(QWidget* parent)
 void MainWindow::setupUi()
 {
     setWindowTitle("GeoSensor Radar Viewer");
-    resize(1000, 700);
+    setMinimumSize(1200, 760);
+    resize(1280, 800);
 
     auto* centralWidget = new QWidget(this);
     auto* layout = new QHBoxLayout(centralWidget);
     auto* leftPanel = new QWidget(centralWidget);
     auto* leftLayout = new QVBoxLayout(leftPanel);
+    leftPanel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding);
+    leftPanel->setMinimumWidth(520);
+    leftPanel->setMaximumWidth(580);
+    leftLayout->setSpacing(10);
+    leftLayout->setContentsMargins(8, 8, 8, 8);
+    layout->setSpacing(12);
+    layout->setContentsMargins(12, 12, 12, 12);
 
     titleLabel_ = new QLabel(leftPanel);
     titleLabel_->setAlignment(Qt::AlignTop | Qt::AlignLeft);
-    titleLabel_->setContentsMargins(24, 24, 24, 24);
+    titleLabel_->setContentsMargins(6, 6, 6, 6);
     titleLabel_->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    titleLabel_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
 
     QFont font;
     font.setFamily("Monospace");
@@ -88,21 +99,6 @@ void MainWindow::setupUi()
         "Clear Stored Measurements",
         leftPanel
     );
-    measurementExportFilterLabel_ = new QLabel(
-        "Measurement Export Filter",
-        leftPanel
-    );
-    measurementExportFilterComboBox_ = new QComboBox(leftPanel);
-    measurementExportFilterComboBox_->addItems(
-        {
-            "All measurements",
-            "Tracked only",
-            "Target ID"
-        }
-    );
-    measurementExportTargetIdSpinBox_ = new QSpinBox(leftPanel);
-    measurementExportTargetIdSpinBox_->setRange(0, std::numeric_limits<int>::max());
-    measurementExportTargetIdSpinBox_->setEnabled(false);
     exportMeasurementsGeoJsonButton_ = new QPushButton(
         "Export Measurements GeoJSON",
         leftPanel
@@ -115,18 +111,12 @@ void MainWindow::setupUi()
         "Export Measurements CSV",
         leftPanel
     );
-    trackStatisticsLabel_ = new QLabel("Track statistics", leftPanel);
     trackStatisticsTable_ = new QTableWidget(leftPanel);
-    storedTrackStatisticsLabel_ = new QLabel("Stored Track Statistics", leftPanel);
     refreshStoredStatisticsButton_ = new QPushButton(
         "Refresh Stored Statistics",
         leftPanel
     );
     storedTrackStatisticsTable_ = new QTableWidget(leftPanel);
-
-    QFont sectionFont;
-    sectionFont.setBold(true);
-    trackStatisticsLabel_->setFont(sectionFont);
 
     trackStatisticsTable_->setColumnCount(6);
     trackStatisticsTable_->setHorizontalHeaderLabels(
@@ -145,12 +135,35 @@ void MainWindow::setupUi()
     trackStatisticsTable_->verticalHeader()->setVisible(false);
     trackStatisticsTable_->horizontalHeader()->setStretchLastSection(false);
     trackStatisticsTable_->horizontalHeader()->setSectionResizeMode(
+        kTrackColumnTargetId,
+        QHeaderView::ResizeToContents
+    );
+    trackStatisticsTable_->horizontalHeader()->setSectionResizeMode(
+        kTrackColumnPoints,
+        QHeaderView::ResizeToContents
+    );
+    trackStatisticsTable_->horizontalHeader()->setSectionResizeMode(
+        kTrackColumnLastRange,
+        QHeaderView::Stretch
+    );
+    trackStatisticsTable_->horizontalHeader()->setSectionResizeMode(
+        kTrackColumnLastAzimuth,
+        QHeaderView::Stretch
+    );
+    trackStatisticsTable_->horizontalHeader()->setSectionResizeMode(
+        kTrackColumnLastIntensity,
+        QHeaderView::Stretch
+    );
+    trackStatisticsTable_->horizontalHeader()->setSectionResizeMode(
+        kTrackColumnLastUpdateTime,
         QHeaderView::ResizeToContents
     );
     trackStatisticsTable_->horizontalHeader()->setMinimumSectionSize(40);
-    trackStatisticsTable_->setColumnWidth(kTrackColumnLastUpdateTime, 110);
-
-    storedTrackStatisticsLabel_->setFont(sectionFont);
+    trackStatisticsTable_->setMaximumHeight(180);
+    trackStatisticsTable_->setSizePolicy(
+        QSizePolicy::Expanding,
+        QSizePolicy::Preferred
+    );
 
     storedTrackStatisticsTable_->setColumnCount(7);
     storedTrackStatisticsTable_->setHorizontalHeaderLabels(
@@ -159,9 +172,9 @@ void MainWindow::setupUi()
             "Points",
             "First",
             "Last",
-            "Min Range",
-            "Max Range",
-            "Avg Intensity"
+            "Min, m",
+            "Max, m",
+            "Avg Int."
         }
     );
     storedTrackStatisticsTable_->setEditTriggers(QAbstractItemView::NoEditTriggers);
@@ -170,29 +183,99 @@ void MainWindow::setupUi()
     storedTrackStatisticsTable_->verticalHeader()->setVisible(false);
     storedTrackStatisticsTable_->horizontalHeader()->setStretchLastSection(false);
     storedTrackStatisticsTable_->horizontalHeader()->setSectionResizeMode(
+        kStoredTrackColumnTargetId,
         QHeaderView::ResizeToContents
     );
+    storedTrackStatisticsTable_->horizontalHeader()->setSectionResizeMode(
+        kStoredTrackColumnPoints,
+        QHeaderView::ResizeToContents
+    );
+    storedTrackStatisticsTable_->horizontalHeader()->setSectionResizeMode(
+        kStoredTrackColumnFirstTimestamp,
+        QHeaderView::ResizeToContents
+    );
+    storedTrackStatisticsTable_->horizontalHeader()->setSectionResizeMode(
+        kStoredTrackColumnLastTimestamp,
+        QHeaderView::ResizeToContents
+    );
+    storedTrackStatisticsTable_->horizontalHeader()->setSectionResizeMode(
+        kStoredTrackColumnMinRange,
+        QHeaderView::Stretch
+    );
+    storedTrackStatisticsTable_->horizontalHeader()->setSectionResizeMode(
+        kStoredTrackColumnMaxRange,
+        QHeaderView::Stretch
+    );
+    storedTrackStatisticsTable_->horizontalHeader()->setSectionResizeMode(
+        kStoredTrackColumnAverageIntensity,
+        QHeaderView::Stretch
+    );
     storedTrackStatisticsTable_->horizontalHeader()->setMinimumSectionSize(40);
+    storedTrackStatisticsTable_->setMaximumHeight(220);
+    storedTrackStatisticsTable_->setSizePolicy(
+        QSizePolicy::Expanding,
+        QSizePolicy::Preferred
+    );
 
-    leftLayout->addWidget(titleLabel_, 1);
-    leftLayout->addWidget(startUdpButton_);
-    leftLayout->addWidget(stopUdpButton_);
-    leftLayout->addWidget(clearLiveTargetsButton_);
-    leftLayout->addWidget(clearStoredMeasurementsButton_);
-    leftLayout->addWidget(measurementExportFilterLabel_);
-    auto* measurementExportFilterLayout = new QHBoxLayout();
-    measurementExportFilterLayout->addWidget(measurementExportFilterComboBox_);
-    measurementExportFilterLayout->addWidget(measurementExportTargetIdSpinBox_);
-    leftLayout->addLayout(measurementExportFilterLayout);
-    leftLayout->addWidget(exportMeasurementsGeoJsonButton_);
-    leftLayout->addWidget(exportTracksGeoJsonButton_);
-    leftLayout->addWidget(exportMeasurementsCsvButton);
-    leftLayout->addWidget(trackStatisticsLabel_);
-    leftLayout->addWidget(trackStatisticsTable_, 1);
-    leftLayout->addWidget(storedTrackStatisticsLabel_);
-    leftLayout->addWidget(refreshStoredStatisticsButton_);
-    leftLayout->addWidget(storedTrackStatisticsTable_, 1);
-    leftLayout->setContentsMargins(0, 0, 0, 0);
+    auto* liveUdpGroup = new QGroupBox("Live UDP", leftPanel);
+    auto* liveUdpLayout = new QVBoxLayout(liveUdpGroup);
+    liveUdpLayout->setContentsMargins(10, 12, 10, 10);
+    liveUdpLayout->setSpacing(8);
+    liveUdpLayout->addWidget(startUdpButton_);
+    liveUdpLayout->addWidget(stopUdpButton_);
+    liveUdpLayout->addWidget(clearLiveTargetsButton_);
+    liveUdpLayout->addWidget(clearStoredMeasurementsButton_);
+
+    auto* exportGroup = new QGroupBox("Measurement Export", leftPanel);
+    auto* exportLayout = new QVBoxLayout(exportGroup);
+    exportLayout->setContentsMargins(10, 12, 10, 10);
+    exportLayout->setSpacing(8);
+    measurementExportFilterLabel_ = new QLabel(
+        "Measurement Export Filter",
+        exportGroup
+    );
+    measurementExportFilterComboBox_ = new QComboBox(exportGroup);
+    measurementExportFilterComboBox_->addItems(
+        {
+            "All measurements",
+            "Tracked only",
+            "Target ID"
+        }
+    );
+    measurementExportTargetIdSpinBox_ = new QSpinBox(exportGroup);
+    measurementExportTargetIdSpinBox_->setRange(
+        0,
+        std::numeric_limits<int>::max()
+    );
+    measurementExportTargetIdSpinBox_->setEnabled(false);
+    auto* measurementExportFilterRow = new QHBoxLayout();
+    measurementExportFilterRow->setSpacing(8);
+    measurementExportFilterRow->addWidget(measurementExportFilterComboBox_, 1);
+    measurementExportFilterRow->addWidget(measurementExportTargetIdSpinBox_);
+    exportLayout->addWidget(measurementExportFilterLabel_);
+    exportLayout->addLayout(measurementExportFilterRow);
+    exportLayout->addWidget(exportMeasurementsCsvButton);
+    exportLayout->addWidget(exportMeasurementsGeoJsonButton_);
+    exportLayout->addWidget(exportTracksGeoJsonButton_);
+
+    auto* trackGroup = new QGroupBox("Track Statistics", leftPanel);
+    auto* trackGroupLayout = new QVBoxLayout(trackGroup);
+    trackGroupLayout->setContentsMargins(10, 12, 10, 10);
+    trackGroupLayout->setSpacing(8);
+    trackGroupLayout->addWidget(trackStatisticsTable_);
+
+    auto* storedTrackGroup = new QGroupBox("Stored Track Statistics", leftPanel);
+    auto* storedTrackGroupLayout = new QVBoxLayout(storedTrackGroup);
+    storedTrackGroupLayout->setContentsMargins(10, 12, 10, 10);
+    storedTrackGroupLayout->setSpacing(8);
+    storedTrackGroupLayout->addWidget(refreshStoredStatisticsButton_);
+    storedTrackGroupLayout->addWidget(storedTrackStatisticsTable_);
+    leftLayout->addWidget(titleLabel_);
+    leftLayout->addWidget(liveUdpGroup);
+    leftLayout->addWidget(exportGroup);
+    leftLayout->addWidget(trackGroup);
+    leftLayout->addWidget(storedTrackGroup);
+    leftLayout->addStretch(1);
 
     radarView_ = new RadarView(centralWidget);
     udpReceiver_ = new geosensor::networking::UdpMeasurementReceiver(this);
@@ -328,8 +411,10 @@ void MainWindow::setupUi()
     updateStoredTrackStatisticsTable();
     refreshDisplay();
 
-    layout->addWidget(leftPanel, 1);
+    layout->addWidget(leftPanel, 0);
     layout->addWidget(radarView_, 1);
+    layout->setStretch(0, 0);
+    layout->setStretch(1, 1);
 
     setCentralWidget(centralWidget);
 }
@@ -341,21 +426,6 @@ void MainWindow::refreshDisplay()
     radarView_->setTargetTrails(buildTargetTrails());
     updateTrackStatisticsTable();
     updateUdpControlStates();
-
-    QString measurementRows;
-
-    for (std::size_t i = 0; i < csvMeasurements_.size(); ++i) {
-        const auto& measurement = csvMeasurements_[i];
-
-        measurementRows += QString(
-            "%1) range=%2 m, azimuth=%3 deg, elevation=%4 deg, intensity=%5\n"
-        )
-            .arg(static_cast<int>(i + 1))
-            .arg(measurement.rangeM, 0, 'f', 1)
-            .arg(measurement.azimuthDeg, 0, 'f', 1)
-            .arg(measurement.elevationDeg, 0, 'f', 1)
-            .arg(measurement.intensity, 0, 'f', 2);
-    }
 
     QString firstTargetText;
 
@@ -402,12 +472,13 @@ void MainWindow::refreshDisplay()
             .arg(target.enu.upM, 0, 'f', 2);
     }
 
-    QString invalidPayloadText = "Last invalid UDP payload: none\n";
+    QString invalidPayloadText = "none";
 
     if (!lastInvalidPayload_.isEmpty()) {
-        invalidPayloadText = QString(
-            "Last invalid UDP payload: %1\n"
-        ).arg(lastInvalidPayload_);
+        invalidPayloadText = lastInvalidPayload_.left(120);
+        if (lastInvalidPayload_.size() > invalidPayloadText.size()) {
+            invalidPayloadText += "...";
+        }
     }
 
     QString storedMeasurementText = "Stored measurements: unavailable\n";
@@ -420,37 +491,34 @@ void MainWindow::refreshDisplay()
     const QString text = QString(
         "GeoSensor Radar Viewer\n"
         "======================\n\n"
-        "Loaded CSV file:\n"
-        "  Path:         %1\n"
-        "  Measurements: %2\n\n"
-        "UDP status:\n"
-        "  Receiver:     %3\n"
-        "  Total valid UDP packets: %4\n"
-        "  CSV targets:  %5\n"
-        "  Live targets: %6 / %7\n"
-        "  %8"
-        "Database status:\n"
-        "  Storage:      %9\n"
+        "CSV sample:\n"
+        "  File:            %1\n"
+        "  Measurements:    %2\n\n"
+        "Live UDP:\n"
+        "  Receiver:        %3\n"
+        "  Valid packets:    %4\n"
+        "  Live points:      %5 / %6\n"
+        "  Last invalid payload: %7\n"
+        "%8\n"
+        "Storage:\n"
+        "  State:           %9\n"
         "  %10"
-        "Raw CSV measurements:\n"
+        "Coordinate transform:\n"
         "%11"
         "%12"
-        "%13"
     )
         .arg(csvPathText_.isEmpty() ? "Unavailable" : csvPathText_)
         .arg(static_cast<int>(csvMeasurements_.size()))
         .arg(udpStatusText_)
         .arg(static_cast<qulonglong>(totalValidUdpPackets_))
-        .arg(static_cast<int>(csvTargets_.size()))
         .arg(static_cast<int>(liveTargets_.size()))
         .arg(static_cast<int>(kMaxLiveTargetCount))
         .arg(invalidPayloadText)
+        .arg(latestLiveText)
         .arg(databaseStatusText_)
         .arg(storedMeasurementText)
-        .arg(measurementRows)
         .arg(firstTargetText)
-        .arg(latestLiveText)
-        .arg("Targets are displayed on the radar scene.");
+        .arg("Targets are displayed on the radar scene.\n");
 
     titleLabel_->setText(text);
 }
