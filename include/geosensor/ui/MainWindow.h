@@ -61,9 +61,7 @@ private:
     buildTargetTrails() const;
 
     QLabel* titleLabel_ {};
-    QLabel* trackStatisticsLabel_ {};
     QTableWidget* trackStatisticsTable_ {};
-    QLabel* storedTrackStatisticsLabel_ {};
     QPushButton* refreshStoredStatisticsButton_ {};
     QTableWidget* storedTrackStatisticsTable_ {};
     RadarView* radarView_ {};
