@@ -1,179 +1,190 @@
 # GeoSensor Radar Viewer
-
 [![CI](https://github.com/wpop/geosensor-radar-viewer/actions/workflows/ci.yml/badge.svg)](https://github.com/wpop/geosensor-radar-viewer/actions/workflows/ci.yml)
 
-GeoSensor Radar Viewer is a C++20 and Qt6 desktop application for visualizing georeferenced radar-like sensor measurements. It demonstrates a focused workflow for loading CSV data, transforming measurements into local ENU coordinates, and presenting the results in a radar-style view.
+GeoSensor Radar Viewer is a C++20 and Qt6 desktop application for radar-like sensor data. It ingests UDP measurements in real time, transforms them into local ENU and geographic coordinates, tracks multiple targets, persists live measurements in SQLite, and exports both measurements and tracks to CSV and GeoJSON.
 
 ## Screenshot
 
 ![GeoSensor Radar Viewer main window](docs/images/geosensor-radar-viewer-main.png)
 
-## Current Features
+## Key Features
 
-- Qt6 Widgets desktop interface
-- CSV loading for radar-style sensor measurements
-- Live UDP measurement receiver on `127.0.0.1:5005`
-- Python UDP simulator with static, moving, and multi-target modes
-- UDP payloads can include `target_id` for track-aware visualization
-- Live UDP controls for start, stop, and clear
-- Range / azimuth / elevation to local ENU coordinate transformation
-- Approximate ENU to WGS84 latitude / longitude conversion
-- Radar-style 2D visualization with:
-  - sensor center
-  - range rings
-  - range labels
-  - separate CSV/sample and live UDP target styles
-  - short per-target trails for UDP packets that include `target_id`
-  - live UDP target buffer limited to the latest 100 positions
-  - total valid UDP packet counter
-  - legend
-- Unit tests for coordinate transformations
-- Unit tests for CSV measurement loading
+- Qt6 Widgets desktop UI
+- CSV sample measurement loading
+- UDP receiver on `127.0.0.1:5005`
+- Python 3 sensor simulator with `static`, `moving`, and `multi` modes
+- Legacy 4-field UDP packets and target-aware 5-field UDP packets
+- Bounded live-point display buffer
+- Multi-target `TrackStore` with short per-target trails
+- Live track statistics in the UI
+- SQLite persistence for live measurements
+- Stored per-target statistics from SQLite
+- Clear stored measurements action
+- Range / azimuth / elevation to ENU and WGS84 coordinate transformation
+- Optional PROJ integration for geographic conversion
+- CSV measurement export
+- Point GeoJSON measurement export
+- Filtered measurement exports: all, tracked only, or selected `target_id`
+- GeoJSON LineString track export
+- Optional GDAL/OGR integration for GeoJSON output
+- GitHub Actions CI
+- Five CTest suites: coordinates, CSV loader, UDP parser, storage, and tracking
 
-## Example CSV Format
+## Architecture
 
-```csv
-range_m,azimuth_deg,elevation_deg,intensity
-1200.0,45.0,3.0,0.82
-950.0,70.0,1.5,0.64
-1500.0,120.0,2.0,0.73
-600.0,315.0,0.5,0.91
+See also [`docs/architecture.md`](docs/architecture.md).
+
+```mermaid
+flowchart TD
+    A[Sensor / Simulator] --> B[UDP]
+    B --> C[UdpMeasurementReceiver]
+    C --> D[UdpMeasurementParser]
+    D --> E[Live display buffer]
+    D --> F[TrackStore]
+    D --> G[MeasurementDatabase]
+    E --> H[RadarView]
+    F --> I[Per-target trails]
+    F --> J[Live track statistics]
+    G --> K[SQLite]
+    K --> L[Stored statistics]
+    K --> M[CSV export]
+    K --> N[Point GeoJSON export]
+    K --> O[Track LineString GeoJSON export]
 ```
 
 ## Technology Stack
 
+Core application:
+
 - C++20
 - Qt6 Widgets
+- Qt6 Network
+- SQLite3
+
+Build and testing:
+
 - CMake
 - Ninja
 - CTest
+- GitHub Actions
 
-## Build Instructions
+Demo simulator:
+
+- Python 3
+
+Optional geospatial support:
+
+- PROJ
+- GDAL/OGR
+- pkg-config for GDAL discovery
+
+When PROJ is not available, coordinate transformation falls back to the built-in WGS84 approximation. When GDAL is not available, Point GeoJSON export uses the manual JSON writer and Track LineString export requires GDAL/OGR.
+
+## Build
+
+On Ubuntu 24.04, a practical setup is:
+
+```bash
+sudo apt install \
+  cmake \
+  ninja-build \
+  g++ \
+  qt6-base-dev \
+  libsqlite3-dev \
+  python3 \
+  pkg-config \
+  libproj-dev \
+  libgdal-dev
+```
+
+`libproj-dev` and `libgdal-dev` are optional. The project still builds without them, but the runtime export and coordinate fallback behavior changes as described above.
+
+Configure and build:
 
 ```bash
 cmake -S . -B build -G Ninja
 cmake --build build
 ```
 
-## Run Instructions
+## Run
 
 ```bash
 ./build/geosensor-radar-viewer
 ```
 
-## Live UDP Demo
+## Demo Workflow
 
-Run the radar viewer in Terminal 1:
+Terminal 1:
 
 ```bash
 ./build/geosensor-radar-viewer
 ```
 
-Run the static UDP simulator in Terminal 2:
+Use `Start UDP` in the UI if needed.
+
+Terminal 2:
 
 ```bash
-./scripts/simulator/udp_sensor_simulator.py --mode static --interval 0.5
+./scripts/simulator/udp_sensor_simulator.py \
+  --mode multi \
+  --interval 0.2 \
+  --azimuth-step 5
 ```
 
-Run the moving UDP simulator in Terminal 2:
+In the UI, you should see multiple moving target IDs, short per-target trails, live statistics, a growing UDP packet count, and the SQLite row count increasing. Export flow:
 
-```bash
-./scripts/simulator/udp_sensor_simulator.py --mode moving --interval 0.2 --azimuth-step 5
+- choose `All measurements`, `Tracked only`, or `Target ID`
+- export measurements as CSV or Point GeoJSON
+- export tracked targets as GeoJSON LineString features
+
+## UDP Payload Formats
+
+```text
+range_m,azimuth_deg,elevation_deg,intensity
+target_id,range_m,azimuth_deg,elevation_deg,intensity
 ```
 
-Run the multi-target UDP simulator in Terminal 2:
+The 4-field format is backward compatible. The 5-field format adds `target_id` and enables target-aware trails and stored per-target data.
 
-```bash
-./scripts/simulator/udp_sensor_simulator.py --mode multi --interval 0.2 --azimuth-step 5
-```
+## Storage and Export
 
-In the radar view, CSV/sample targets remain visible and are styled separately from live UDP targets. `Start UDP` starts or resumes receiving live packets, `Stop UDP` pauses live receiving, and `Clear Live Targets` removes only the live UDP targets while keeping the CSV/sample targets on screen. Live targets are limited to the latest 100 positions, and the `Total valid UDP packets` status line continues increasing even after the live target buffer reaches 100. In moving mode, azimuth changes gradually so the red live target moves around the radar. When UDP packets include `target_id`, the viewer groups detections into short per-target trails. Legacy 4-field UDP packets still appear as live detections, but they do not carry track identity.
+Live measurements are stored in `data/geosensor_live_measurements.sqlite`.
 
-## SQLite Storage
+Stored measurement rows include:
 
-Valid live UDP measurements are stored automatically in `data/geosensor_live_measurements.sqlite` when the application runs. The UI also shows storage status and the current stored measurement count.
-
-The `measurements` table stores:
-
-- `target_id` as a nullable track identifier
-- `timestamp_ms` in Unix milliseconds
+- nullable `target_id`
+- `timestamp_ms`
 - `range_m`
 - `azimuth_deg`
 - `elevation_deg`
 - `intensity`
 
-Packets with `target_id` are stored with that value. Legacy 4-field packets are stored with `NULL` `target_id`, which also applies to older rows created before track-aware storage was added. Existing SQLite databases are migrated in place by adding any missing columns.
+Legacy rows from 4-field packets keep `target_id = NULL`. The database migrates older schemas in place by adding missing columns.
 
-The database file is a runtime artifact and should not be committed. The repository ignores `data/*.sqlite`.
+Exports and stored statistics:
 
-`Clear Live Targets` clears only the live display buffer. It does not delete rows already stored in SQLite.
+- filtered CSV export
+- filtered Point GeoJSON export
+- GeoJSON LineString track export
+- stored per-target statistics grouped by `target_id`
 
-To inspect the current stored row count:
+## Tests
 
-```bash
-sqlite3 data/geosensor_live_measurements.sqlite "SELECT COUNT(*) FROM measurements;"
-```
-
-To see how many stored rows belong to each target identity, including legacy `NULL` rows:
-
-```bash
-sqlite3 data/geosensor_live_measurements.sqlite "SELECT COALESCE(CAST(target_id AS TEXT), 'NULL') AS target_id, COUNT(*) AS row_count FROM measurements GROUP BY target_id ORDER BY target_id;"
-```
-
-## UDP Sensor Simulator
-
-The repository includes a small Python UDP simulator that sends one radar-style measurement per packet as CSV text.
-
-Supported UDP payload formats:
-
-```text
-1200.0,45.0,3.0,0.82
-7,1200.0,45.0,3.0,0.82
-```
-
-The 4-field format is kept for backward compatibility. The 5-field format adds `target_id` as the first field and enables target-aware trail visualization in the viewer.
-
-Run it with the default destination `127.0.0.1:5005` and a `1.0` second interval:
-
-```bash
-./scripts/simulator/udp_sensor_simulator.py
-```
-
-Run the existing repeating static sample mode explicitly:
-
-```bash
-./scripts/simulator/udp_sensor_simulator.py --mode static
-```
-
-Run a moving-target mode with gradually changing azimuth:
-
-```bash
-./scripts/simulator/udp_sensor_simulator.py --mode moving --azimuth-step 5.0
-```
-
-Run a multi-target mode with several moving detections:
-
-```bash
-./scripts/simulator/udp_sensor_simulator.py --mode multi --azimuth-step 5.0
-```
-
-In multi-target mode, the simulator sends one UDP packet per target for each update cycle. These packets include `target_id`, so the viewer can render short per-target trails. Legacy 4-field packets still work and show up as live detections without track identity.
-
-Optional arguments:
-
-- `--host` to change the destination host
-- `--port` to change the destination UDP port
-- `--interval` to change the delay between packets in seconds
-- `--mode` to choose `static`, `moving`, or `multi`
-- `--azimuth-step` to control azimuth change per packet in moving and multi modes
-
-## Test Instructions
-
-The project uses simple C++ assert-based test executables registered with CTest.
+Run the CTest suites with:
 
 ```bash
 ctest --test-dir build --output-on-failure
 ```
+
+The repository currently registers five test executables:
+
+- `geosensor_coordinate_tests`
+- `geosensor_csv_tests`
+- `geosensor_udp_parser_tests`
+- `geosensor_storage_tests`
+- `geosensor_tracking_tests`
+
+GitHub Actions builds the project and runs this test suite in CI.
 
 ## Project Structure
 
@@ -182,26 +193,29 @@ include/geosensor/
 ├── coordinates/
 ├── data/
 ├── io/
+├── networking/
+├── storage/
+├── tracking/
 └── ui/
 
 src/
 ├── coordinates/
 ├── io/
+├── networking/
+├── storage/
+├── tracking/
 └── ui/
 
 tests/
 ├── coordinates/
-└── io/
+├── io/
+├── storage/
+└── tracking/
 
-data/samples/
-docs/images/
 scripts/simulator/
+docs/
 ```
 
-## Roadmap
+## Project Status
 
-- UDP sensor simulator
-- Qt UDP receiver
-- SQLite storage
-- GDAL / PROJ GIS support
-- GitHub Actions CI
+The core portfolio and demo workflow is complete: the application demonstrates UDP ingestion, target tracking, geographic transformation, SQLite persistence, export paths, automated tests, and CI. It is intentionally focused on being a clear engineering demonstration rather than production radar-processing software.
